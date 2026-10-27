@@ -13,15 +13,11 @@ from django.contrib.auth.models import User
 from apps.accounts.models import UserProfile, Role
 from django.conf import settings
 import dj_database_url
-
-
-def clean_url(raw: str) -> str:
-    if not raw:
-        return ''
-    cleaned = raw.strip().strip('\'"`<> ')
-    if cleaned.startswith('psql '):
-        cleaned = cleaned[5:].strip().strip('\'"`<> ')
-    return cleaned
+from apps.common.utils import (
+    sanitize_postgres_url,
+    validate_postgres_url,
+    secure_read_url,
+)
 
 
 class Command(BaseCommand):
@@ -62,39 +58,40 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        db_url = clean_url(options.get('database_url') or '')
+        raw_input = options.get('database_url') or ''
 
         # Fallback to env or Windows User registry
-        if not db_url:
+        if not raw_input:
             import os
-            db_url = clean_url(os.getenv('DATABASE_URL', ''))
-            if not db_url and sys.platform == 'win32':
+            raw_input = os.getenv('DATABASE_URL', '')
+            if not raw_input and sys.platform == 'win32':
                 try:
                     import winreg
                     with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r'Environment') as key:
                         val, _ = winreg.QueryValueEx(key, 'DATABASE_URL')
-                        db_url = clean_url(val or '')
+                        raw_input = val or ''
                 except (FileNotFoundError, OSError):
                     pass
 
-        # Interactive fallback if requested or if require_postgresql and running in interactive terminal
-        if not db_url and (options.get('interactive') or (options.get('require_postgresql') and sys.stdin.isatty())):
+        # Interactive fallback
+        if not raw_input and (options.get('interactive') or (options.get('require_postgresql') and sys.stdin.isatty())):
             try:
                 self.stdout.write(self.style.NOTICE("Enter Neon DATABASE_URL (input hidden, will not show in history):"))
-                raw_input = getpass.getpass("DATABASE_URL: ")
-                db_url = clean_url(raw_input)
+                raw_input = secure_read_url("DATABASE_URL: ")
             except Exception as e:
                 self.stdout.write(self.style.WARNING(f"Could not read interactive input: {e}"))
 
+        cleaned_url = sanitize_postgres_url(raw_input)
+        is_valid, err_msg, details = validate_postgres_url(cleaned_url)
+
+        if cleaned_url and not is_valid:
+            raise CommandError(f"Invalid connection string: {err_msg}")
+
         # If user explicitly provided db_url or found it in env/registry, reconfigure connection
-        if db_url:
-            if not (db_url.startswith('postgresql://') or db_url.startswith('postgres://')):
-                raise CommandError(
-                    "DATABASE_URL must be a valid PostgreSQL connection string starting with postgresql:// or postgres://"
-                )
+        if is_valid:
             connections.close_all()
             settings.DATABASES['default'] = dj_database_url.parse(
-                db_url,
+                cleaned_url,
                 conn_max_age=600,
                 conn_health_checks=True,
             )
@@ -104,15 +101,18 @@ class Command(BaseCommand):
         db_name = conf.get('NAME', 'unknown')
         host = conf.get('HOST', 'localhost')
 
-        if (options['require_postgresql'] or db_url) and vendor != 'postgresql':
+        if (options['require_postgresql'] or is_valid) and vendor != 'postgresql':
             raise CommandError(
                 f"Aborted: Target database is {vendor}, but PostgreSQL is required. "
                 "Run with --interactive or pass DATABASE_URL before running."
             )
 
         # Mask host for security
-        masked_host = (host[:6] + "..." + host[-15:]) if len(host) > 21 else host
+        masked_host = details.get('masked_host') if is_valid else ((host[:6] + "..." + host[-15:]) if len(host) > 21 else host)
+        is_neon = details.get('is_neon', False) if is_valid else ('neon.tech' in host.lower())
+
         self.stdout.write(self.style.NOTICE(f"Target Database: {vendor.upper()} ('{db_name}' on '{masked_host}')"))
+        self.stdout.write(self.style.NOTICE(f"Provider:        {'Neon PostgreSQL (verified)' if is_neon else 'External/Other PostgreSQL'}"))
 
         # Verify connection
         with connection.cursor() as cursor:
