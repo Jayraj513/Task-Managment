@@ -104,12 +104,18 @@ TEMPLATES = [
 WSGI_APPLICATION = 'workline.wsgi.application'
 
 # Database configuration
-# - Default: SQLite database at BASE_DIR / 'db.sqlite3'
-# - Vercel Serverless: SQLite database in writable /tmp/db.sqlite3 initialized from bundled db.sqlite3
 # - Production/PostgreSQL: Configured via DATABASE_URL environment variable
+# - Vercel Serverless: Requires DATABASE_URL (ephemeral SQLite disabled in production)
+# - Local Development: Defaults to SQLite database at BASE_DIR / 'db.sqlite3'
 DATABASE_URL = os.getenv('DATABASE_URL', '').strip()
+IS_VERCEL = os.getenv('VERCEL') == '1' or bool(os.getenv('VERCEL_URL'))
 
 if DATABASE_URL:
+    if not (DATABASE_URL.startswith('postgresql://') or DATABASE_URL.startswith('postgres://')):
+        from django.core.exceptions import ImproperlyConfigured
+        raise ImproperlyConfigured(
+            "DATABASE_URL must be a valid PostgreSQL connection string starting with postgresql:// or postgres://"
+        )
     DATABASES = {
         'default': dj_database_url.parse(
             DATABASE_URL,
@@ -117,18 +123,12 @@ if DATABASE_URL:
             conn_health_checks=True,
         )
     }
-elif os.getenv('VERCEL') == '1' or os.getenv('VERCEL_URL'):
-    import shutil
-    db_path = Path('/tmp') / 'db.sqlite3'
-    bundled_db = BASE_DIR / 'db.sqlite3'
-    if not db_path.exists() and bundled_db.exists():
-        shutil.copy2(bundled_db, db_path)
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': db_path,
-        }
-    }
+elif IS_VERCEL:
+    from django.core.exceptions import ImproperlyConfigured
+    raise ImproperlyConfigured(
+        "DATABASE_URL environment variable is required on Vercel for persistent PostgreSQL storage. "
+        "Ephemeral SQLite is disabled in production to prevent data loss."
+    )
 else:
     DATABASES = {
         'default': {

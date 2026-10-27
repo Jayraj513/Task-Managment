@@ -45,19 +45,5 @@ call_command('migrate', interactive=False)
 
 # 3. Securely install / enable Jayraj Admin account
 print("\n=== 3. CONFIGURING JAYRAJ ADMIN ACCOUNT ===")
-call_command('loaddata', 'admin_account_fixture.json')
+call_command('setup_admin', require_postgresql=True, reuse_local_hash=True, no_migrate=True)
 
-# Ensure Jayraj is superuser and staff
-jayraj = User.objects.get(username='jayraj')
-jayraj.is_superuser = True
-jayraj.is_staff = True
-jayraj.save()
-
-print(f"Admin account '{jayraj.username}' is configured and ready!")
-print(f"  - Email: {jayraj.email}")
-print(f"  - Is Superuser: {jayraj.is_superuser}")
-print(f"  - Is Staff: {jayraj.is_staff}")
-print(f"  - Has Usable Password: {jayraj.has_usable_password()}")
-print(f"  - Role: {jayraj.profile.role}")
-
-print("\nSUCCESS: Neon database is fully migrated with Jayraj Admin account enabled!")
