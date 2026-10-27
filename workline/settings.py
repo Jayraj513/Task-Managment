@@ -26,13 +26,22 @@ SECRET_KEY = os.getenv(
 )
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv('DJANGO_DEBUG', 'True').lower() in ('true', '1', 'yes')
+DEBUG = os.getenv('DJANGO_DEBUG', 'False').lower() in ('true', '1', 'yes')
 
 ALLOWED_HOSTS = [
     host.strip()
     for host in os.getenv('DJANGO_ALLOWED_HOSTS', '127.0.0.1,localhost,testserver').split(',')
     if host.strip()
 ]
+
+# Vercel deployment support
+VERCEL_URL = os.getenv('VERCEL_URL')
+if VERCEL_URL and VERCEL_URL not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(VERCEL_URL)
+
+for vhost in ['ogflow.vercel.app', '.vercel.app']:
+    if vhost not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(vhost)
 
 # Render cloud hosting support
 RENDER_EXTERNAL_HOSTNAME = os.getenv('RENDER_EXTERNAL_HOSTNAME')
@@ -161,6 +170,12 @@ CSRF_TRUSTED_ORIGINS = []
 csrf_origins = os.getenv('CSRF_TRUSTED_ORIGINS', '')
 if csrf_origins:
     CSRF_TRUSTED_ORIGINS.extend([orig.strip() for orig in csrf_origins.split(',') if orig.strip()])
+if VERCEL_URL:
+    CSRF_TRUSTED_ORIGINS.append(f'https://{VERCEL_URL}')
+CSRF_TRUSTED_ORIGINS.extend([
+    'https://ogflow.vercel.app',
+    'https://*.vercel.app',
+])
 if RENDER_EXTERNAL_HOSTNAME:
     CSRF_TRUSTED_ORIGINS.append(f'https://{RENDER_EXTERNAL_HOSTNAME}')
 CSRF_TRUSTED_ORIGINS.append('https://*.onrender.com')
