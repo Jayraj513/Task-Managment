@@ -2,12 +2,23 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.models import User
 from django.contrib.auth.decorators import login_required
+from django.views.decorators.csrf import ensure_csrf_cookie
 from django.contrib import messages
 from apps.accounts.models import Role, UserProfile
 from apps.accounts.permissions import require_admin
 from apps.workspaces.models import Workspace, WorkspaceMembership
 
 
+def csrf_failure_view(request, reason=""):
+    """
+    User-friendly handler for CSRF token expiration or origin mismatches.
+    Redirects back to login with a clean warning message instead of a raw 403 page.
+    """
+    messages.warning(request, "Your security session expired or refreshed. Please sign in again.")
+    return redirect('login')
+
+
+@ensure_csrf_cookie
 def login_view(request):
     if request.user.is_authenticated:
         return redirect('overview')

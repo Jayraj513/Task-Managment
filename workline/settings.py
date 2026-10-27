@@ -210,15 +210,34 @@ csrf_origins = os.getenv('CSRF_TRUSTED_ORIGINS', '')
 if csrf_origins:
     CSRF_TRUSTED_ORIGINS.extend([orig.strip() for orig in csrf_origins.split(',') if orig.strip()])
 if VERCEL_URL:
-    CSRF_TRUSTED_ORIGINS.append(f'https://{VERCEL_URL}')
+    CSRF_TRUSTED_ORIGINS.extend([
+        f'https://{VERCEL_URL}',
+        f'http://{VERCEL_URL}',
+    ])
 CSRF_TRUSTED_ORIGINS.extend([
     'https://ogflow.vercel.app',
+    'http://ogflow.vercel.app',
     'https://*.vercel.app',
+    'http://*.vercel.app',
+    'https://*.onrender.com',
+    'http://*.onrender.com',
 ])
 if RENDER_EXTERNAL_HOSTNAME:
-    CSRF_TRUSTED_ORIGINS.append(f'https://{RENDER_EXTERNAL_HOSTNAME}')
-CSRF_TRUSTED_ORIGINS.append('https://*.onrender.com')
+    CSRF_TRUSTED_ORIGINS.extend([
+        f'https://{RENDER_EXTERNAL_HOSTNAME}',
+        f'http://{RENDER_EXTERNAL_HOSTNAME}',
+    ])
 CSRF_TRUSTED_ORIGINS = list(dict.fromkeys(CSRF_TRUSTED_ORIGINS))
+
+# Custom user-friendly CSRF failure view
+CSRF_FAILURE_VIEW = 'apps.accounts.views.csrf_failure_view'
+
+# Cookie and proxy security settings
+CSRF_COOKIE_SAMESITE = 'Lax'
+SESSION_COOKIE_SAMESITE = 'Lax'
+if not DEBUG:
+    CSRF_COOKIE_SECURE = True
+    SESSION_COOKIE_SECURE = True
 
 # Maximum file upload size: 10MB
 DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
