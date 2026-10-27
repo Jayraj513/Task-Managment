@@ -107,13 +107,21 @@ WSGI_APPLICATION = 'workline.wsgi.application'
 # - Production/PostgreSQL: Configured via DATABASE_URL environment variable
 # - Vercel Serverless: Requires DATABASE_URL (ephemeral SQLite disabled in production)
 # - Local Development: Defaults to SQLite database at BASE_DIR / 'db.sqlite3'
-DATABASE_URL = os.getenv('DATABASE_URL', '').strip()
+def clean_database_url(raw: str) -> str:
+    if not raw:
+        return ''
+    cleaned = raw.strip().strip('\'"`<> ')
+    if cleaned.startswith('psql '):
+        cleaned = cleaned[5:].strip().strip('\'"`<> ')
+    return cleaned
+
+DATABASE_URL = clean_database_url(os.getenv('DATABASE_URL', ''))
 if not DATABASE_URL and sys.platform == 'win32':
     try:
         import winreg
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r'Environment') as key:
             val, _ = winreg.QueryValueEx(key, 'DATABASE_URL')
-            DATABASE_URL = (val or '').strip()
+            DATABASE_URL = clean_database_url(val or '')
     except (FileNotFoundError, OSError):
         pass
 
@@ -121,10 +129,19 @@ IS_VERCEL = os.getenv('VERCEL') == '1' or bool(os.getenv('VERCEL_URL'))
 
 if DATABASE_URL:
     if not (DATABASE_URL.startswith('postgresql://') or DATABASE_URL.startswith('postgres://')):
-        from django.core.exceptions import ImproperlyConfigured
-        raise ImproperlyConfigured(
-            "DATABASE_URL must be a valid PostgreSQL connection string starting with postgresql:// or postgres://"
-        )
+        if IS_VERCEL:
+            from django.core.exceptions import ImproperlyConfigured
+            raise ImproperlyConfigured(
+                "DATABASE_URL must be a valid PostgreSQL connection string starting with postgresql:// or postgres://"
+            )
+        else:
+            import warnings
+            warnings.warn(
+                "Ignoring invalid local DATABASE_URL (must start with postgresql:// or postgres://). Falling back to SQLite."
+            )
+            DATABASE_URL = ''
+
+if DATABASE_URL:
     DATABASES = {
         'default': dj_database_url.parse(
             DATABASE_URL,
