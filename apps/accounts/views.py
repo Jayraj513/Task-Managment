@@ -14,15 +14,8 @@ def login_view(request):
 
     error_message = None
     if request.method == 'POST':
-        # Check for demo quick-switch or standard form submission
         username = request.POST.get('username', '').strip()
         password = request.POST.get('password', '')
-
-        # Support quick one-click demo login
-        quick_user = request.POST.get('quick_user')
-        if quick_user in ['admin', 'manager', 'alex', 'maya', 'taylor']:
-            username = quick_user
-            password = 'WorklineDemo2026!'
 
         user = authenticate(request, username=username, password=password)
         if user is not None:
