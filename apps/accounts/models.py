@@ -70,6 +70,8 @@ class UserProfile(models.Model):
 @receiver(post_save, sender=User)
 def create_or_save_user_profile(sender, instance, created, **kwargs):
     """Ensure UserProfile always exists for every User."""
+    if kwargs.get('raw', False):
+        return
     if created:
         role = Role.ADMIN if instance.is_superuser else Role.MEMBER
         UserProfile.objects.create(user=instance, role=role)
