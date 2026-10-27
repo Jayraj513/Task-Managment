@@ -108,6 +108,15 @@ WSGI_APPLICATION = 'workline.wsgi.application'
 # - Vercel Serverless: Requires DATABASE_URL (ephemeral SQLite disabled in production)
 # - Local Development: Defaults to SQLite database at BASE_DIR / 'db.sqlite3'
 DATABASE_URL = os.getenv('DATABASE_URL', '').strip()
+if not DATABASE_URL and sys.platform == 'win32':
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r'Environment') as key:
+            val, _ = winreg.QueryValueEx(key, 'DATABASE_URL')
+            DATABASE_URL = (val or '').strip()
+    except (FileNotFoundError, OSError):
+        pass
+
 IS_VERCEL = os.getenv('VERCEL') == '1' or bool(os.getenv('VERCEL_URL'))
 
 if DATABASE_URL:

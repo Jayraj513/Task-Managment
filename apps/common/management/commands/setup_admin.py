@@ -101,8 +101,12 @@ class Command(BaseCommand):
             user.is_superuser = True
             user.is_staff = True
             user.is_active = True
-            user.save(update_fields=['is_superuser', 'is_staff', 'is_active'])
-            self.stdout.write(self.style.SUCCESS("Updated existing 'jayraj' to Superuser & Staff."))
+            update_fields = ['is_superuser', 'is_staff', 'is_active']
+            if local_hash and local_hash.startswith(('pbkdf2_sha256$', 'argon2$', 'bcrypt$')):
+                user.password = local_hash
+                update_fields.append('password')
+            user.save(update_fields=update_fields)
+            self.stdout.write(self.style.SUCCESS("Updated existing 'jayraj' to Superuser & Staff with verified password."))
 
         # Ensure UserProfile exists with Role.ADMIN
         profile, created = UserProfile.objects.get_or_create(user=user)
