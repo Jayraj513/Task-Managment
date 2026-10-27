@@ -1,0 +1,460 @@
+{% extends 'base.html' %}
+
+{% block title %}[{{ task.identifier }}] {{ task.title }} — Workline{% endblock %}
+
+{% block content %}
+<div class="space-y-6 max-w-6xl mx-auto">
+  <!-- Top Navigation & Actions Bar -->
+  <div class="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+    <div class="flex items-center gap-2 text-xs">
+      <a href="{% url 'project_detail' project_id=task.project.id %}" class="font-bold text-slate-700 hover:text-indigo-600 flex items-center gap-1.5">
+        <span class="w-2.5 h-2.5 rounded-full" style="background-color: {{ task.project.color }};"></span>
+        <span>{{ task.project.name }}</span>
+      </a>
+      <span class="text-slate-300">/</span>
+      <span class="font-mono font-bold text-slate-500">{{ task.identifier }}</span>
+      {% if task.parent_task %}
+        <span class="text-slate-300">/</span>
+        <span class="text-slate-400">Subtask of</span>
+        <a href="{% url 'task_detail' task_id=task.parent_task.id %}" class="text-indigo-600 hover:underline font-mono">{{ task.parent_task.identifier }}</a>
+      {% endif %}
+    </div>
+
+    <!-- Actions -->
+    <div class="flex items-center gap-2 text-xs">
+      {% if can_mutate_tasks %}
+        <a href="{% url 'task_edit' task_id=task.id %}" class="px-3 py-1.5 border border-slate-300 hover:bg-slate-50 rounded-lg font-semibold text-slate-700">
+          Edit Task
+        </a>
+        <form method="POST" action="{% url 'task_archive' task_id=task.id %}" onsubmit="return confirm('Archive or restore this task?')">
+          {% csrf_token %}
+          <button type="submit" class="px-3 py-1.5 border border-slate-200 hover:bg-rose-50 text-slate-500 hover:text-rose-700 rounded-lg font-semibold">
+            {% if task.is_archived %}Restore{% else %}Archive{% endif %}
+          </button>
+        </form>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Two Column Layout: Main Details & Sidebar Info -->
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+    
+    <!-- LEFT 2 COLS: Task Content, Subtasks, Dependencies, Comments, Attachments -->
+    <div class="lg:col-span-2 space-y-6">
+      
+      <!-- Primary Card: Title, Status, Description -->
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
+        <!-- Status Bar -->
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4">
+          <div class="flex items-center gap-3">
+            {% if can_mutate_tasks %}
+              <form method="POST" action="{% url 'api_update_task_status' task_id=task.id %}" class="flex items-center gap-2">
+                {% csrf_token %}
+                <span class="text-xs text-slate-400">Status:</span>
+                <select
+                  name="status"
+                  onchange="this.form.submit()"
+                  class="text-xs font-bold rounded-lg px-2.5 py-1 border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  {% for sval, slabel in status_choices %}
+                    <option value="{{ sval }}" {% if task.status == sval %}selected{% endif %}>{{ slabel }}</option>
+                  {% endfor %}
+                </select>
+              </form>
+            {% else %}
+              <span class="status-badge status-{{ task.status }}">{{ task.get_status_display }}</span>
+            {% endif %}
+
+            <span class="priority-badge priority-{{ task.priority }}">{{ task.get_priority_display }}</span>
+          </div>
+
+          {% if task.is_overdue %}
+            <span class="px-2.5 py-1 rounded-full text-xs font-bold bg-rose-100 text-rose-700 flex items-center gap-1">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              <span>Overdue by {{ task.due_date|timesince }}</span>
+            </span>
+          {% endif %}
+        </div>
+
+        <!-- Task Title -->
+        <h1 class="text-2xl font-bold text-slate-900 tracking-tight leading-snug">
+          {{ task.title }}
+        </h1>
+
+        <!-- Blocked Reason Callout -->
+        {% if task.status == 'BLOCKED' %}
+          <div class="p-3.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs space-y-1">
+            <div class="font-bold flex items-center gap-1.5">
+              <svg class="w-4 h-4 shrink-0 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>
+              <span>Blocked Reason:</span>
+            </div>
+            <p class="leading-relaxed pl-5">{{ task.blocked_reason|default:"No explanation specified." }}</p>
+          </div>
+        {% endif %}
+
+        <!-- Description -->
+        <div class="space-y-1 pt-2">
+          <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider">Description</h3>
+          <div class="text-sm text-slate-700 leading-relaxed whitespace-pre-line bg-slate-50/50 p-4 rounded-lg border border-slate-100 min-h-[80px]">
+            {{ task.description|default:"No detailed description provided." }}
+          </div>
+        </div>
+
+        <!-- Tags -->
+        {% if task.tags.exists %}
+          <div class="flex items-center gap-2 pt-2">
+            <span class="text-xs text-slate-400">Tags:</span>
+            <div class="flex flex-wrap gap-1.5">
+              {% for tag in task.tags.all %}
+                <span class="text-xs font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-700">{{ tag.name }}</span>
+              {% endfor %}
+            </div>
+          </div>
+        {% endif %}
+      </div>
+
+      <!-- Subtasks Section -->
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <h2 class="text-sm font-bold text-slate-800">Subtasks</h2>
+            <span class="text-xs font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-mono">
+              {{ task.subtasks_completed_count }}/{{ task.subtasks_count }}
+            </span>
+          </div>
+          {% if can_mutate_tasks %}
+            <a href="{% url 'task_create' %}?parent={{ task.id }}&project={{ task.project.id }}" class="text-xs font-semibold text-indigo-600 hover:text-indigo-800">
+              + Add Subtask
+            </a>
+          {% endif %}
+        </div>
+
+        <div class="space-y-2">
+          {% for st in subtasks %}
+            <div class="p-3 rounded-lg border border-slate-100 hover:bg-slate-50/80 transition-colors flex items-center justify-between gap-3 text-xs">
+              <div class="flex items-center gap-2.5 min-w-0">
+                <form method="POST" action="{% url 'api_update_task_status' task_id=st.id %}">
+                  {% csrf_token %}
+                  <input type="hidden" name="status" value="{% if st.status == 'DONE' %}TODO{% else %}DONE{% endif %}">
+                  <button type="submit" class="w-4 h-4 rounded border {% if st.status == 'DONE' %}bg-emerald-600 border-emerald-600 text-white{% else %}border-slate-300 hover:border-indigo-500{% endif %} flex items-center justify-center text-[10px]">
+                    {% if st.status == 'DONE' %}&check;{% endif %}
+                  </button>
+                </form>
+                <a href="{% url 'task_detail' task_id=st.id %}" class="font-medium text-slate-800 hover:text-indigo-600 truncate {% if st.status == 'DONE' %}line-through text-slate-400{% endif %}">
+                  <span class="font-mono text-slate-400 mr-1">{{ st.identifier }}</span>
+                  {{ st.title }}
+                </a>
+              </div>
+
+              <div class="flex items-center gap-2 shrink-0">
+                <span class="status-badge status-{{ st.status }} text-[10px]">{{ st.get_status_display }}</span>
+                {% if st.assignee %}
+                  <span class="text-[11px] text-slate-500">{{ st.assignee.get_full_name|default:st.assignee.username }}</span>
+                {% endif %}
+              </div>
+            </div>
+          {% empty %}
+            <div class="text-xs text-slate-400 italic py-1">No subtasks created yet.</div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- Dependencies Section (Predecessors & Successors) -->
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <svg class="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
+            <h2 class="text-sm font-bold text-slate-800">Task Dependencies</h2>
+          </div>
+          {% if can_mutate_tasks and potential_predecessors %}
+            <button onclick="openModal('add-dep-modal')" class="text-xs font-semibold text-indigo-600 hover:text-indigo-800">
+              + Link Dependency
+            </button>
+          {% endif %}
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+          <!-- Blocked By (Predecessors) -->
+          <div class="p-3.5 rounded-lg bg-slate-50 border border-slate-200 space-y-2">
+            <div class="font-bold text-slate-700 uppercase tracking-wider text-[11px] flex items-center justify-between">
+              <span>Blocked By (Must Finish First)</span>
+              <span class="text-slate-400 font-mono">{{ predecessor_deps.count }}</span>
+            </div>
+            {% for dep in predecessor_deps %}
+              <div class="p-2 rounded bg-white border border-slate-200 flex items-center justify-between gap-2 shadow-xs">
+                <a href="{% url 'task_detail' task_id=dep.predecessor_task.id %}" class="font-semibold text-slate-800 hover:text-indigo-600 truncate">
+                  <span class="font-mono text-slate-400 mr-1">{{ dep.predecessor_task.identifier }}</span>
+                  {{ dep.predecessor_task.title }}
+                </a>
+                <div class="flex items-center gap-1.5 shrink-0">
+                  <span class="status-badge status-{{ dep.predecessor_task.status }} text-[9px]">{{ dep.predecessor_task.get_status_display }}</span>
+                  {% if can_mutate_tasks %}
+                    <form method="POST" action="{% url 'task_delete_dependency' dependency_id=dep.id %}">
+                      {% csrf_token %}
+                      <button type="submit" class="text-slate-300 hover:text-rose-600 font-bold px-1" title="Unlink">&times;</button>
+                    </form>
+                  {% endif %}
+                </div>
+              </div>
+            {% empty %}
+              <div class="text-[11px] text-slate-400 italic">No prerequisite tasks blocking this work.</div>
+            {% endfor %}
+          </div>
+
+          <!-- Blocking (Successors) -->
+          <div class="p-3.5 rounded-lg bg-slate-50 border border-slate-200 space-y-2">
+            <div class="font-bold text-slate-700 uppercase tracking-wider text-[11px] flex items-center justify-between">
+              <span>Blocks (Waiting on This Task)</span>
+              <span class="text-slate-400 font-mono">{{ successor_deps.count }}</span>
+            </div>
+            {% for dep in successor_deps %}
+              <div class="p-2 rounded bg-white border border-slate-200 flex items-center justify-between gap-2 shadow-xs">
+                <a href="{% url 'task_detail' task_id=dep.successor_task.id %}" class="font-semibold text-slate-800 hover:text-indigo-600 truncate">
+                  <span class="font-mono text-slate-400 mr-1">{{ dep.successor_task.identifier }}</span>
+                  {{ dep.successor_task.title }}
+                </a>
+                <div class="flex items-center gap-1.5 shrink-0">
+                  <span class="status-badge status-{{ dep.successor_task.status }} text-[9px]">{{ dep.successor_task.get_status_display }}</span>
+                  {% if can_mutate_tasks %}
+                    <form method="POST" action="{% url 'task_delete_dependency' dependency_id=dep.id %}">
+                      {% csrf_token %}
+                      <button type="submit" class="text-slate-300 hover:text-rose-600 font-bold px-1" title="Unlink">&times;</button>
+                    </form>
+                  {% endif %}
+                </div>
+              </div>
+            {% empty %}
+              <div class="text-[11px] text-slate-400 italic">No other tasks currently blocked by this work.</div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+
+      <!-- Discussion & Comments -->
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
+        <h2 class="text-sm font-bold text-slate-800">Comments & Activity</h2>
+
+        <!-- Comments Feed -->
+        <div class="space-y-4">
+          {% for c in comments %}
+            <div class="p-4 rounded-lg bg-slate-50/70 border border-slate-100 space-y-1.5">
+              <div class="flex items-center justify-between text-xs">
+                <div class="flex items-center gap-2">
+                  <div class="w-5 h-5 rounded-full flex items-center justify-center font-bold text-[9px] text-white" style="background-color: {{ c.author.profile.avatar_color|default:'#4f46e5' }};">
+                    {{ c.author.profile.initials|default:"U" }}
+                  </div>
+                  <span class="font-bold text-slate-800">{{ c.author.get_full_name|default:c.author.username }}</span>
+                </div>
+                <span class="text-[11px] text-slate-400 font-mono">{{ c.created_at|timesince }} ago</span>
+              </div>
+              <p class="text-xs text-slate-700 leading-relaxed whitespace-pre-line pl-7">{{ c.body }}</p>
+            </div>
+          {% empty %}
+            <div class="text-xs text-slate-400 italic">No comments yet. Start the discussion below.</div>
+          {% endfor %}
+        </div>
+
+        <!-- Add Comment Form -->
+        {% if can_mutate_tasks %}
+          <form method="POST" action="{% url 'task_add_comment' task_id=task.id %}" class="space-y-2 pt-2 border-t border-slate-100">
+            {% csrf_token %}
+            <textarea name="body" rows="2" required placeholder="Write a comment, share evidence, or ask a question..." class="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"></textarea>
+            <div class="flex justify-end">
+              <button type="submit" class="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors">
+                Post Comment
+              </button>
+            </div>
+          </form>
+        {% endif %}
+      </div>
+
+      <!-- Attachments Section -->
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
+        <div class="flex items-center justify-between">
+          <h2 class="text-sm font-bold text-slate-800">Attachments</h2>
+          <span class="text-xs text-slate-400">{{ attachments.count }} files</span>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {% for att in attachments %}
+            <div class="p-3 rounded-lg border border-slate-200 flex items-center justify-between gap-3 text-xs hover:bg-slate-50 transition-colors">
+              <div class="flex items-center gap-2.5 truncate">
+                <svg class="w-4 h-4 text-indigo-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/></svg>
+                <div class="truncate">
+                  <div class="font-semibold text-slate-800 truncate">{{ att.original_filename }}</div>
+                  <div class="text-[10px] text-slate-400 font-mono">{{ att.formatted_size }} &bull; {{ att.created_at|date:"M d" }}</div>
+                </div>
+              </div>
+              <a href="{{ att.file.url }}" target="_blank" class="text-indigo-600 hover:underline font-semibold shrink-0">Download</a>
+            </div>
+          {% empty %}
+            <div class="col-span-full text-xs text-slate-400 italic">No attachments uploaded.</div>
+          {% endfor %}
+        </div>
+
+        <!-- File Upload Form -->
+        {% if can_mutate_tasks %}
+          <form method="POST" action="{% url 'task_add_attachment' task_id=task.id %}" enctype="multipart/form-data" class="pt-3 border-t border-slate-100 flex items-center gap-3 text-xs">
+            {% csrf_token %}
+            <input type="file" name="attachment_file" required class="flex-1 text-xs text-slate-500 file:mr-2 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer">
+            <button type="submit" class="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg font-semibold shrink-0">Upload</button>
+          </form>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- RIGHT 1 COL: Meta Properties, Time Tracking, Audit Log -->
+    <div class="space-y-6">
+      
+      <!-- Meta Properties Card -->
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4 text-xs">
+        <h3 class="font-bold text-slate-800 uppercase tracking-wider text-[11px] border-b border-slate-100 pb-2">Properties</h3>
+
+        <!-- Assignee -->
+        <div class="flex items-center justify-between">
+          <span class="text-slate-400">Assignee:</span>
+          {% if task.assignee %}
+            <div class="flex items-center gap-2">
+              <div class="w-5 h-5 rounded-full flex items-center justify-center font-bold text-[9px] text-white" style="background-color: {{ task.assignee.profile.avatar_color|default:'#4f46e5' }};">
+                {{ task.assignee.profile.initials|default:"U" }}
+              </div>
+              <span class="font-semibold text-slate-800">{{ task.assignee.get_full_name|default:task.assignee.username }}</span>
+            </div>
+          {% else %}
+            <span class="text-slate-400 italic">Unassigned</span>
+          {% endif %}
+        </div>
+
+        <!-- Reporter -->
+        <div class="flex items-center justify-between">
+          <span class="text-slate-400">Reporter:</span>
+          <span class="font-semibold text-slate-700">{{ task.reporter.get_full_name|default:task.reporter.username }}</span>
+        </div>
+
+        <!-- Dates -->
+        <div class="flex items-center justify-between">
+          <span class="text-slate-400">Start Date:</span>
+          <span class="font-mono text-slate-700">{{ task.start_date|date:"M d, Y"|default:"-" }}</span>
+        </div>
+        <div class="flex items-center justify-between">
+          <span class="text-slate-400">Due Date:</span>
+          <span class="font-mono {% if task.is_overdue %}text-rose-600 font-bold{% else %}text-slate-700{% endif %}">
+            {{ task.due_date|date:"M d, Y"|default:"-" }}
+          </span>
+        </div>
+
+        <!-- Estimate Hours -->
+        <div class="flex items-center justify-between">
+          <span class="text-slate-400">Estimate:</span>
+          <span class="font-mono font-bold text-slate-800">{{ task.estimate_hours }} hrs</span>
+        </div>
+
+        <!-- Progress -->
+        <div class="space-y-1.5 pt-2 border-t border-slate-100">
+          <div class="flex items-center justify-between">
+            <span class="text-slate-400">Progress:</span>
+            <span class="font-mono font-bold text-slate-800">{{ task.progress_percent }}%</span>
+          </div>
+          <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+            <div class="bg-indigo-600 h-2 rounded-full transition-all" style="width: {{ task.progress_percent }}%;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Time Tracking Card -->
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4 text-xs">
+        <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+          <h3 class="font-bold text-slate-800 uppercase tracking-wider text-[11px]">Time Tracking</h3>
+          <span class="font-mono font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">{{ total_logged_hours }}h logged</span>
+        </div>
+
+        <!-- Logged entries -->
+        <div class="space-y-2 max-h-40 overflow-y-auto">
+          {% for entry in time_entries %}
+            <div class="p-2 rounded bg-slate-50 border border-slate-100 flex items-center justify-between">
+              <div>
+                <div class="font-semibold text-slate-800">{{ entry.user.get_full_name|default:entry.user.username }} &bull; <strong class="text-emerald-700">{{ entry.duration_hours }}h</strong></div>
+                {% if entry.note %}<div class="text-[10px] text-slate-400 italic">{{ entry.note }}</div>{% endif %}
+              </div>
+              <span class="text-[10px] text-slate-400 font-mono">{{ entry.entry_date|date:"M d" }}</span>
+            </div>
+          {% empty %}
+            <div class="text-[11px] text-slate-400 italic">No time recorded yet.</div>
+          {% endfor %}
+        </div>
+
+        <!-- Inline Log Time Form -->
+        {% if can_mutate_tasks %}
+          <form method="POST" action="{% url 'task_add_time_entry' task_id=task.id %}" class="space-y-2 pt-2 border-t border-slate-100">
+            {% csrf_token %}
+            <div class="grid grid-cols-2 gap-2">
+              <input type="number" step="0.25" min="0.1" name="duration_hours" required placeholder="Hours (e.g. 1.5)" class="px-2.5 py-1.5 border border-slate-300 rounded-lg focus:outline-none">
+              <input type="date" name="entry_date" value="{% now 'Y-m-d' %}" class="px-2.5 py-1.5 border border-slate-300 rounded-lg focus:outline-none text-[11px]">
+            </div>
+            <input type="text" name="note" placeholder="Note (optional)" class="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg focus:outline-none text-xs">
+            <button type="submit" class="w-full py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg font-semibold transition-colors">
+              Log Time
+            </button>
+          </form>
+        {% endif %}
+      </div>
+
+      <!-- Audit Activity Log Feed -->
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-3 text-xs">
+        <h3 class="font-bold text-slate-800 uppercase tracking-wider text-[11px] border-b border-slate-100 pb-2">Activity Audit</h3>
+        <div class="space-y-3 max-h-60 overflow-y-auto">
+          {% for ev in activity_events %}
+            <div class="flex items-start gap-2.5 text-[11px] leading-relaxed">
+              <span class="w-1.5 h-1.5 rounded-full bg-indigo-500 mt-1.5 shrink-0"></span>
+              <div>
+                <p class="text-slate-700 font-medium">{{ ev.summary }}</p>
+                <span class="text-[10px] text-slate-400 font-mono">{{ ev.created_at|timesince }} ago</span>
+              </div>
+            </div>
+          {% empty %}
+            <div class="text-[11px] text-slate-400 italic">No recorded activity events.</div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add Dependency Modal -->
+{% if potential_predecessors %}
+<div id="add-dep-modal" class="modal-backdrop fixed inset-0 z-50 hidden items-center justify-center p-4">
+  <div class="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden">
+    <div class="px-5 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+      <h3 class="text-xs font-bold text-slate-800">Add Dependency Link</h3>
+      <button onclick="closeModal('add-dep-modal')" class="text-slate-400 hover:text-slate-600">&times;</button>
+    </div>
+    <form method="POST" action="{% url 'task_add_dependency' task_id=task.id %}" class="p-5 space-y-3 text-xs">
+      {% csrf_token %}
+      <div>
+        <label class="block font-semibold text-slate-700 mb-1">Select Prerequisite Task (Must finish before this task)</label>
+        <select name="predecessor_task_id" required class="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white focus:outline-none">
+          <option value="">Select a task...</option>
+          {% for pt in potential_predecessors %}
+            <option value="{{ pt.id }}">[{{ pt.identifier }}] {{ pt.title }}</option>
+          {% endfor %}
+        </select>
+        <p class="text-[10px] text-slate-400 mt-1">Dependency graph automatically validates and prevents circular loops.</p>
+      </div>
+
+      <div>
+        <label class="block font-semibold text-slate-700 mb-1">Relationship Type</label>
+        <select name="dependency_type" class="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white focus:outline-none">
+          <option value="BLOCKS">Blocks (Hard prerequisite)</option>
+          <option value="RELATES_TO">Relates To (Informational connection)</option>
+        </select>
+      </div>
+
+      <div class="pt-2 flex justify-end gap-2">
+        <button type="button" onclick="closeModal('add-dep-modal')" class="px-3 py-1.5 border border-slate-200 rounded-lg font-semibold text-slate-600">Cancel</button>
+        <button type="submit" class="px-3.5 py-1.5 bg-indigo-600 text-white rounded-lg font-semibold">Link Dependency</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

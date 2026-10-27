@@ -1,0 +1,136 @@
+{% extends 'base.html' %}
+
+{% block title %}Users & Roles — Workspace Admin{% endblock %}
+
+{% block content %}
+<div class="space-y-6 max-w-5xl mx-auto">
+  <!-- Top bar -->
+  <div class="flex items-center justify-between">
+    <div>
+      <h1 class="text-xl font-bold text-slate-900">Workspace Users & Roles</h1>
+      <p class="text-xs text-slate-500 mt-0.5">Manage permissions across Admin, Manager, Member, and Viewer accounts</p>
+    </div>
+    <button onclick="openModal('create-user-modal')" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors flex items-center gap-1.5">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"/></svg>
+      <span>Add New Member</span>
+    </button>
+  </div>
+
+  <!-- Users Table -->
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+    <table class="w-full text-left text-sm">
+      <thead class="bg-slate-50/80 border-b border-slate-200 text-xs text-slate-500 font-semibold uppercase">
+        <tr>
+          <th class="px-6 py-3.5">User</th>
+          <th class="px-6 py-3.5">Role</th>
+          <th class="px-6 py-3.5">Weekly Capacity</th>
+          <th class="px-6 py-3.5">Joined</th>
+          <th class="px-6 py-3.5 text-right">Actions</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100">
+        {% for mem in memberships %}
+          <tr class="hover:bg-slate-50/50 transition-colors">
+            <!-- User Info -->
+            <td class="px-6 py-4">
+              <div class="flex items-center gap-3">
+                <div class="w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs text-white shrink-0 shadow-sm" style="background-color: {{ mem.user.profile.avatar_color|default:'#4f46e5' }};">
+                  {{ mem.user.profile.initials|default:"U" }}
+                </div>
+                <div>
+                  <div class="font-bold text-slate-900">{{ mem.user.get_full_name|default:mem.user.username }}</div>
+                  <div class="text-xs text-slate-400 font-mono">{{ mem.user.email }} &bull; @{{ mem.user.username }}</div>
+                </div>
+              </div>
+            </td>
+
+            <!-- Role Badge / Selector -->
+            <td class="px-6 py-4">
+              <form method="POST" action="{% url 'users_admin' %}" class="flex items-center gap-2">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="update_role">
+                <input type="hidden" name="user_id" value="{{ mem.user.id }}">
+                <select name="role" onchange="this.form.submit()" class="text-xs font-semibold rounded-lg px-2.5 py-1 border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                  {% for rval, rlabel in role_choices %}
+                    <option value="{{ rval }}" {% if mem.user.profile.role == rval %}selected{% endif %}>{{ rlabel }}</option>
+                  {% endfor %}
+                </select>
+              </form>
+            </td>
+
+            <!-- Capacity -->
+            <td class="px-6 py-4 text-xs font-medium text-slate-600">
+              {{ mem.user.profile.weekly_capacity_hours }} hrs/week
+            </td>
+
+            <!-- Joined -->
+            <td class="px-6 py-4 text-xs text-slate-400">
+              {{ mem.joined_at|date:"M d, Y" }}
+            </td>
+
+            <!-- Actions -->
+            <td class="px-6 py-4 text-right">
+              <span class="text-xs text-slate-400">Active</span>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Create User Modal -->
+<div id="create-user-modal" class="modal-backdrop fixed inset-0 z-50 hidden items-center justify-center p-4">
+  <div class="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden">
+    <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+      <h3 class="text-sm font-bold text-slate-800">Add Workspace User</h3>
+      <button onclick="closeModal('create-user-modal')" class="text-slate-400 hover:text-slate-600">&times;</button>
+    </div>
+
+    <form method="POST" action="{% url 'users_admin' %}" class="p-6 space-y-4">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="create_user">
+
+      <div>
+        <label class="block text-xs font-semibold text-slate-700 mb-1">Username <span class="text-rose-500">*</span></label>
+        <input type="text" name="username" required placeholder="e.g. jordan" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+      </div>
+
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">First Name</label>
+          <input type="text" name="first_name" placeholder="Jordan" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Last Name</label>
+          <input type="text" name="last_name" placeholder="Lee" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-xs font-semibold text-slate-700 mb-1">Email</label>
+        <input type="email" name="email" placeholder="jordan@workline.local" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+      </div>
+
+      <div>
+        <label class="block text-xs font-semibold text-slate-700 mb-1">Role</label>
+        <select name="role" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white">
+          {% for rval, rlabel in role_choices %}
+            <option value="{{ rval }}" {% if rval == 'MEMBER' %}selected{% endif %}>{{ rlabel }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div>
+        <label class="block text-xs font-semibold text-slate-700 mb-1">Initial Password</label>
+        <input type="text" name="password" value="WorklineDemo2026!" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none font-mono text-xs">
+      </div>
+
+      <div class="pt-3 border-t border-slate-100 flex justify-end gap-2">
+        <button type="button" onclick="closeModal('create-user-modal')" class="px-4 py-2 border border-slate-200 text-slate-600 rounded-lg text-xs font-semibold">Cancel</button>
+        <button type="submit" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold">Create Account</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

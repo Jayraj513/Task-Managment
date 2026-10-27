@@ -1,0 +1,87 @@
+<header class="h-16 bg-white border-b border-slate-200 px-6 flex items-center justify-between shrink-0 shadow-sm z-10">
+  <!-- Left Breadcrumbs / View Title -->
+  <div class="flex items-center gap-3">
+    <div class="flex items-center gap-2 text-sm text-slate-500 font-medium">
+      <span class="text-slate-400">Workline</span>
+      <span class="text-slate-300">/</span>
+      <span class="text-slate-900 font-semibold capitalize">
+        {% if request.resolver_match.url_name == 'overview' %}
+          Overview Dashboard
+        {% elif request.resolver_match.url_name == 'my_tasks' %}
+          My Tasks
+        {% elif request.resolver_match.url_name == 'task_board' %}
+          Kanban Board
+        {% elif request.resolver_match.url_name == 'task_list' %}
+          Task List
+        {% elif request.resolver_match.url_name == 'task_calendar' %}
+          Calendar View
+        {% elif request.resolver_match.url_name == 'task_gantt' %}
+          Gantt Timeline
+        {% elif request.resolver_match.url_name == 'team_workload' %}
+          Team Workload
+        {% elif request.resolver_match.url_name == 'reports' %}
+          Executive Reports
+        {% elif request.resolver_match.url_name == 'notification_list' %}
+          Notifications
+        {% elif 'project' in request.resolver_match.url_name %}
+          Projects
+        {% else %}
+          {{ request.resolver_match.url_name|title }}
+        {% endif %}
+      </span>
+    </div>
+  </div>
+
+  <!-- Center Global Search -->
+  <div class="flex-1 max-w-md mx-6 hidden sm:block">
+    <form action="{% url 'task_list' %}" method="GET" class="relative">
+      <svg class="w-4 h-4 text-slate-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+      <input
+        type="text"
+        id="global-search-input"
+        name="q"
+        value="{{ request.GET.q|default:'' }}"
+        placeholder="Search tasks, descriptions... (Press '/' to focus)"
+        class="w-full pl-9 pr-10 py-1.5 bg-slate-100 hover:bg-slate-200/70 focus:bg-white border border-transparent focus:border-indigo-500 rounded-lg text-xs transition-colors focus:outline-none"
+      >
+      <kbd class="hidden md:inline-block absolute right-2.5 top-2 text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded border border-slate-300 font-mono">/</kbd>
+    </form>
+  </div>
+
+  <!-- Right Actions & Profile -->
+  <div class="flex items-center gap-3">
+    <!-- Quick Create "+ Task" Button -->
+    {% if can_mutate_tasks %}
+      <button
+        onclick="openModal('quick-create-modal')"
+        class="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg shadow-sm transition-colors focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+        title="Quick Create Task (Press 'c')"
+      >
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+        <span>New Task</span>
+      </button>
+    {% endif %}
+
+    <!-- Notification Icon with Dropdown Popover -->
+    <div class="relative group">
+      <a href="{% url 'notification_list' %}" class="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg relative block transition-colors">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+        {% if unread_notifications_count > 0 %}
+          <span class="absolute top-1 right-1 w-2 h-2 bg-indigo-600 rounded-full animate-pulse"></span>
+        {% endif %}
+      </a>
+    </div>
+
+    <!-- User Role Badge -->
+    <span class="hidden md:inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold {% if user_profile.role == 'ADMIN' %}bg-rose-100 text-rose-800{% elif user_profile.role == 'MANAGER' %}bg-indigo-100 text-indigo-800{% elif user_profile.role == 'VIEWER' %}bg-amber-100 text-amber-800{% else %}bg-slate-100 text-slate-800{% endif %}">
+      {{ user_profile.get_role_display|default:"Member" }}
+    </span>
+
+    <!-- User Avatar & Profile Dropdown -->
+    <a href="{% url 'profile' %}" class="flex items-center gap-2 pl-2 border-l border-slate-200">
+      <div class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs text-white shadow-sm" style="background-color: {{ user_profile.avatar_color|default:'#4f46e5' }};">
+        {{ user_profile.initials|default:"U" }}
+      </div>
+    </a>
+  </div>
+</header>

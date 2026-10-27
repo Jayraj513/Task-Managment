@@ -1,0 +1,125 @@
+/* Workline Custom Design System & Utilities */
+
+:root {
+  --primary: #4f46e5;
+  --primary-hover: #4338ca;
+  --bg-sidebar: #0f172a;
+  --sidebar-active: #1e293b;
+  --canvas-bg: #f8fafc;
+  --card-bg: #ffffff;
+  --border-color: #e2e8f0;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background-color: var(--canvas-bg);
+  color: #1e293b;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Kanban Board Drag & Drop */
+.kanban-col {
+  min-height: 520px;
+  transition: background-color 0.15s ease;
+}
+
+.kanban-col.drag-over {
+  background-color: #f1f5f9;
+  border: 2px dashed #6366f1;
+}
+
+.kanban-card {
+  transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+  cursor: grab;
+}
+
+.kanban-card:active {
+  cursor: grabbing;
+}
+
+.kanban-card.dragging {
+  opacity: 0.4;
+  transform: scale(0.98);
+}
+
+/* Status Chips */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.2rem 0.55rem;
+  border-radius: 9999px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.status-BACKLOG { background-color: #f1f5f9; color: #475569; }
+.status-TODO { background-color: #e2e8f0; color: #334155; }
+.status-IN_PROGRESS { background-color: #dbeafe; color: #1e40af; }
+.status-IN_REVIEW { background-color: #ede9fe; color: #5b21b6; }
+.status-BLOCKED { background-color: #fee2e2; color: #991b1b; }
+.status-DONE { background-color: #dcfce7; color: #166534; }
+.status-CANCELLED { background-color: #f1f5f9; color: #94a3b8; }
+
+/* Priority Chips */
+.priority-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: 0.375rem;
+}
+
+.priority-URGENT { background-color: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+.priority-HIGH { background-color: #fff7ed; color: #c2410c; border: 1px solid #ffedd5; }
+.priority-MEDIUM { background-color: #eff6ff; color: #1d4ed8; border: 1px solid #dbeafe; }
+.priority-LOW { background-color: #f8fafc; color: #64748b; border: 1px solid #e2e8f0; }
+
+/* Gantt Chart SVG styling */
+.gantt-grid line {
+  stroke: #e2e8f0;
+  stroke-width: 1;
+}
+
+.gantt-bar {
+  rx: 4px;
+  ry: 4px;
+  cursor: pointer;
+  transition: opacity 0.15s ease, filter 0.15s ease;
+}
+
+.gantt-bar:hover {
+  filter: brightness(0.92);
+}
+
+.gantt-dep-line {
+  stroke: #6366f1;
+  stroke-width: 2;
+  fill: none;
+  stroke-dasharray: 4;
+}
+
+/* Modal Backdrop */
+.modal-backdrop {
+  background-color: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(4px);
+}

@@ -1,0 +1,138 @@
+{% extends 'base.html' %}
+
+{% block title %}Projects — Workline{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+  <!-- Top Bar -->
+  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div>
+      <h1 class="text-xl font-bold text-slate-900 tracking-tight">Workspace Projects</h1>
+      <p class="text-xs text-slate-500 mt-0.5">High-level roadmaps, deliverables, and team ownership</p>
+    </div>
+
+    <div class="flex items-center gap-3">
+      {% if can_manage_projects %}
+        <a href="{% url 'project_create' %}" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors flex items-center gap-1.5">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+          <span>New Project</span>
+        </a>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Filter & Search Toolbar -->
+  <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-4">
+    <form method="GET" action="{% url 'project_list' %}" class="flex flex-wrap items-center gap-3 text-xs w-full sm:w-auto">
+      <!-- Search -->
+      <div class="relative min-w-[200px]">
+        <input type="text" name="q" value="{{ q }}" placeholder="Search projects..." class="w-full pl-8 pr-3 py-1.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+        <svg class="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+      </div>
+
+      <!-- Status Filter -->
+      <select name="status" onchange="this.form.submit()" class="px-3 py-1.5 border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none font-medium">
+        <option value="all">All Statuses</option>
+        {% for sval, slabel in status_choices %}
+          <option value="{{ sval }}" {% if status_filter == sval %}selected{% endif %}>{{ slabel }}</option>
+        {% endfor %}
+      </select>
+
+      <button type="submit" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-semibold">Filter</button>
+
+      {% if q or status_filter != 'all' or show_archived %}
+        <a href="{% url 'project_list' %}" class="text-indigo-600 hover:text-indigo-800 text-xs font-medium ml-1">Reset</a>
+      {% endif %}
+    </form>
+
+    <!-- Archive toggle -->
+    <div class="text-xs">
+      <a href="?archived={% if show_archived %}0{% else %}1{% endif %}" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors font-medium">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"/></svg>
+        <span>{% if show_archived %}Show Active Projects{% else %}View Archived Projects{% endif %}</span>
+      </a>
+    </div>
+  </div>
+
+  <!-- Projects Grid -->
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    {% for item in projects_list %}
+      {% with proj=item.project %}
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between overflow-hidden">
+          <div class="p-5 space-y-4">
+            <!-- Header -->
+            <div class="flex items-start justify-between gap-3">
+              <div class="flex items-center gap-2.5">
+                <span class="w-3.5 h-3.5 rounded-md shrink-0 shadow-sm" style="background-color: {{ proj.color }};"></span>
+                <span class="text-xs font-mono font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">{{ proj.key }}</span>
+              </div>
+              <span class="status-badge text-[10px] {% if proj.status == 'ACTIVE' %}bg-emerald-50 text-emerald-700 border border-emerald-200{% elif proj.status == 'PLANNING' %}bg-sky-50 text-sky-700 border border-sky-200{% elif proj.status == 'COMPLETED' %}bg-indigo-50 text-indigo-700 border border-indigo-200{% else %}bg-slate-100 text-slate-700{% endif %}">
+                {{ proj.get_status_display }}
+              </span>
+            </div>
+
+            <!-- Title & Description -->
+            <div>
+              <a href="{% url 'project_detail' project_id=proj.id %}" class="text-base font-bold text-slate-900 hover:text-indigo-600 transition-colors line-clamp-1">
+                {{ proj.name }}
+              </a>
+              <p class="text-xs text-slate-500 mt-1 line-clamp-2 leading-relaxed">
+                {{ proj.description|default:"No description provided." }}
+              </p>
+            </div>
+
+            <!-- Owner & Timeline -->
+            <div class="flex items-center justify-between text-xs text-slate-500 pt-2 border-t border-slate-100">
+              <div class="flex items-center gap-2">
+                <span class="font-medium text-slate-700">
+                  {% if proj.owner %}
+                    {{ proj.owner.get_full_name|default:proj.owner.username }}
+                  {% else %}
+                    Unassigned
+                  {% endif %}
+                </span>
+              </div>
+              <div class="text-[11px] text-slate-400 font-mono">
+                {% if proj.due_date %}Due {{ proj.due_date|date:"M d" }}{% endif %}
+              </div>
+            </div>
+
+            <!-- Progress Bar -->
+            <div class="space-y-1.5 pt-1">
+              <div class="flex items-center justify-between text-xs">
+                <span class="text-slate-500">Progress</span>
+                <span class="font-bold text-slate-800">{{ item.progress }}%</span>
+              </div>
+              <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                <div class="bg-indigo-600 h-2 rounded-full transition-all duration-500" style="width: {{ item.progress }}%;"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Bottom Footer -->
+          <div class="px-5 py-3 bg-slate-50/70 border-t border-slate-100 flex items-center justify-between text-xs">
+            <span class="text-slate-500 font-medium">
+              <strong class="text-slate-800">{{ item.total_tasks }}</strong> tasks &bull; <strong class="text-emerald-700">{{ item.done_tasks }}</strong> done
+            </span>
+            <a href="{% url 'project_detail' project_id=proj.id %}" class="text-indigo-600 hover:text-indigo-800 font-semibold flex items-center gap-1">
+              <span>View</span>
+              <span>&rarr;</span>
+            </a>
+          </div>
+        </div>
+      {% endwith %}
+    {% empty %}
+      <div class="col-span-full py-16 text-center bg-white rounded-xl border border-dashed border-slate-300 p-8">
+        <svg class="w-12 h-12 text-slate-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
+        <h3 class="text-sm font-bold text-slate-700">No projects found</h3>
+        <p class="text-xs text-slate-400 mt-1">Try adjusting your filters or search terms.</p>
+        {% if can_manage_projects %}
+          <div class="mt-4">
+            <a href="{% url 'project_create' %}" class="px-4 py-2 bg-indigo-600 text-white rounded-lg text-xs font-semibold">Create First Project</a>
+          </div>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

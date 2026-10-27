@@ -1,0 +1,153 @@
+{% extends 'base.html' %}
+
+{% block title %}Team Workload — Workline{% endblock %}
+
+{% block content %}
+<div class="space-y-6 max-w-6xl mx-auto">
+  <!-- Header -->
+  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div>
+      <h1 class="text-xl font-bold text-slate-900 tracking-tight">Team Workload & Capacity</h1>
+      <p class="text-xs text-slate-500 mt-0.5">Balancing assigned task estimates against configured weekly working hours</p>
+    </div>
+
+    {% if total_overloaded_members > 0 %}
+      <span class="px-3 py-1.5 rounded-lg text-xs font-bold bg-rose-100 text-rose-800 border border-rose-200 flex items-center gap-1.5 shadow-xs">
+        <svg class="w-4 h-4 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+        <span>{{ total_overloaded_members }} member(s) exceeding capacity</span>
+      </span>
+    {% endif %}
+  </div>
+
+  <!-- Summary Metrics Cards -->
+  <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+    <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+      <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Total Team Capacity</span>
+      <span class="text-2xl font-black text-slate-900">{{ total_capacity }} <span class="text-xs font-normal text-slate-400">hrs</span></span>
+    </div>
+
+    <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+      <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Allocated Estimate</span>
+      <span class="text-2xl font-black text-indigo-600">{{ total_estimated }} <span class="text-xs font-normal text-slate-400">hrs</span></span>
+    </div>
+
+    <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+      <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Total Logged Time</span>
+      <span class="text-2xl font-black text-emerald-600">{{ total_logged }} <span class="text-xs font-normal text-slate-400">hrs</span></span>
+    </div>
+
+    <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+      <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Overall Utilization</span>
+      <span class="text-2xl font-black {% if overall_utilization > 100 %}text-rose-600{% else %}text-slate-900{% endif %}">
+        {{ overall_utilization }}%
+      </span>
+    </div>
+
+    <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+      <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Overloaded Members</span>
+      <span class="text-2xl font-black {% if total_overloaded_members > 0 %}text-rose-600{% else %}text-emerald-600{% endif %}">
+        {{ total_overloaded_members }}
+      </span>
+    </div>
+  </div>
+
+  <!-- Team Workload Table -->
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+    <div class="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+      <h2 class="text-sm font-bold text-slate-800">Assignee Capacity Matrix</h2>
+      <span class="text-xs text-slate-400">Based on active tasks and configurable capacity</span>
+    </div>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-left text-xs">
+        <thead class="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold uppercase">
+          <tr>
+            <th class="px-6 py-3.5">Team Member</th>
+            <th class="px-4 py-3.5">Weekly Capacity</th>
+            <th class="px-4 py-3.5">Active Tasks</th>
+            <th class="px-4 py-3.5">Allocated Hours</th>
+            <th class="px-4 py-3.5">Logged Hours</th>
+            <th class="px-6 py-3.5">Utilization & Balance</th>
+            <th class="px-6 py-3.5 text-right">Status</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          {% for item in workload_matrix %}
+            <tr class="hover:bg-slate-50/70 transition-colors {% if item.is_overloaded %}bg-rose-50/20{% endif %}">
+              <!-- Member -->
+              <td class="px-6 py-4">
+                <div class="flex items-center gap-3">
+                  <div class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs text-white shadow-xs" style="background-color: {{ item.profile.avatar_color|default:'#4f46e5' }};">
+                    {{ item.profile.initials|default:"U" }}
+                  </div>
+                  <div>
+                    <a href="{% url 'task_list' %}?assignee={{ item.user.id }}" class="font-bold text-slate-900 hover:text-indigo-600">
+                      {{ item.user.get_full_name|default:item.user.username }}
+                    </a>
+                    <div class="text-[10px] text-slate-400">{{ item.profile.job_title|default:item.profile.get_role_display }}</div>
+                  </div>
+                </div>
+              </td>
+
+              <!-- Capacity -->
+              <td class="px-4 py-4 font-mono font-semibold text-slate-700">
+                {{ item.capacity_hours }} hrs/wk
+              </td>
+
+              <!-- Active Tasks -->
+              <td class="px-4 py-4">
+                <a href="{% url 'task_list' %}?assignee={{ item.user.id }}" class="font-bold text-indigo-600 hover:underline">
+                  {{ item.assigned_tasks_count }} tasks
+                </a>
+              </td>
+
+              <!-- Allocated Hours -->
+              <td class="px-4 py-4 font-mono font-bold {% if item.is_overloaded %}text-rose-600{% else %}text-slate-800{% endif %}">
+                {{ item.estimated_hours }} hrs
+              </td>
+
+              <!-- Logged Hours -->
+              <td class="px-4 py-4 font-mono text-emerald-700 font-semibold">
+                {{ item.logged_hours }} hrs
+              </td>
+
+              <!-- Utilization Progress Bar -->
+              <td class="px-6 py-4 min-w-[180px]">
+                <div class="space-y-1">
+                  <div class="flex items-center justify-between text-[11px] font-mono">
+                    <span class="{% if item.is_overloaded %}text-rose-700 font-bold{% else %}text-slate-500{% endif %}">{{ item.utilization_rate }}%</span>
+                    <span class="text-slate-400">{{ item.remaining_capacity }}h free</span>
+                  </div>
+                  <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                    <div
+                      class="h-2 rounded-full transition-all {% if item.is_overloaded %}bg-rose-500{% elif item.utilization_rate >= 80 %}bg-amber-500{% else %}bg-indigo-600{% endif %}"
+                      style="width: {% if item.utilization_rate > 100 %}100{% else %}{{ item.utilization_rate }}{% endif %}%;"
+                    ></div>
+                  </div>
+                </div>
+              </td>
+
+              <!-- Status Badge -->
+              <td class="px-6 py-4 text-right">
+                {% if item.is_overloaded %}
+                  <span class="px-2.5 py-1 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200 uppercase tracking-wider">
+                    Overloaded
+                  </span>
+                {% elif item.utilization_rate >= 75 %}
+                  <span class="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 uppercase tracking-wider">
+                    Optimal
+                  </span>
+                {% else %}
+                  <span class="px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 uppercase tracking-wider">
+                    Available
+                  </span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

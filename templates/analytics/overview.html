@@ -1,0 +1,350 @@
+{% extends 'base.html' %}
+
+{% block title %}Overview Dashboard — Workline{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+  <!-- Top Welcome & Filter Toolbar -->
+  <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div>
+        <h1 class="text-xl font-bold text-slate-900 tracking-tight">Executive Dashboard</h1>
+        <p class="text-xs text-slate-500 mt-0.5">Real-time database metrics, delivery throughput, and team velocity</p>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <a href="{% url 'reports' %}" class="px-3.5 py-1.5 border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-semibold shadow-sm transition-colors flex items-center gap-1.5">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+          <span>Reports & CSV</span>
+        </a>
+      </div>
+    </div>
+
+    <!-- Filter Form -->
+    <form method="GET" class="flex flex-wrap items-center gap-3 pt-3 border-t border-slate-100 text-xs">
+      <!-- Project Filter -->
+      <select name="project" onchange="this.form.submit()" class="px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white focus:outline-none">
+        <option value="all">All Projects</option>
+        {% for p in projects %}
+          <option value="{{ p.id }}" {% if selected_project == p.id|stringformat:"s" %}selected{% endif %}>{{ p.name }} ({{ p.key }})</option>
+        {% endfor %}
+      </select>
+
+      <!-- Assignee Filter -->
+      <select name="assignee" onchange="this.form.submit()" class="px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white focus:outline-none">
+        <option value="all">All Assignees</option>
+        <option value="unassigned" {% if selected_assignee == 'unassigned' %}selected{% endif %}>Unassigned Only</option>
+        {% for u in users %}
+          <option value="{{ u.id }}" {% if selected_assignee == u.id|stringformat:"s" %}selected{% endif %}>{{ u.get_full_name|default:u.username }}</option>
+        {% endfor %}
+      </select>
+
+      <!-- Priority Filter -->
+      <select name="priority" onchange="this.form.submit()" class="px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white focus:outline-none">
+        <option value="all">All Priorities</option>
+        {% for pval, plabel in priority_choices %}
+          <option value="{{ pval }}" {% if selected_priority == pval %}selected{% endif %}>{{ plabel }}</option>
+        {% endfor %}
+      </select>
+
+      <!-- Date Range -->
+      <div class="flex items-center gap-1.5 text-slate-500">
+        <span>From:</span>
+        <input type="date" name="date_from" value="{{ date_from }}" class="px-2 py-1 border border-slate-300 rounded-lg bg-white focus:outline-none">
+        <span>To:</span>
+        <input type="date" name="date_to" value="{{ date_to }}" class="px-2 py-1 border border-slate-300 rounded-lg bg-white focus:outline-none">
+      </div>
+
+      <button type="submit" class="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg font-semibold">Apply Filters</button>
+
+      {% if selected_project != 'all' or selected_assignee != 'all' or selected_priority != 'all' or date_from or date_to %}
+        <a href="{% url 'overview' %}" class="text-indigo-600 hover:text-indigo-800 font-semibold ml-1">Reset</a>
+      {% endif %}
+    </form>
+  </div>
+
+  <!-- 5 KPI Cards Strip (Query-backed & Clickable Drill-down) -->
+  <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+    <!-- Card 1: Total Open -->
+    <a href="{% url 'task_list' %}?status=TODO&project={{ selected_project }}&assignee={{ selected_assignee }}" class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:border-indigo-300 hover:shadow-md transition-all group">
+      <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Open Tasks</span>
+      <div class="flex items-baseline justify-between">
+        <span class="text-2xl font-black text-slate-900 group-hover:text-indigo-600 transition-colors">{{ kpis.total_open }}</span>
+        <span class="text-xs text-slate-400 font-mono">{{ kpis.total_tasks }} total</span>
+      </div>
+    </a>
+
+    <!-- Card 2: Completed This Week -->
+    <a href="{% url 'task_list' %}?status=DONE&project={{ selected_project }}&assignee={{ selected_assignee }}" class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:border-emerald-300 hover:shadow-md transition-all group">
+      <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Done This Week</span>
+      <div class="flex items-baseline justify-between">
+        <span class="text-2xl font-black text-emerald-600">{{ kpis.completed_this_week }}</span>
+        <span class="text-xs text-emerald-700 font-semibold">&uarr; Velocity</span>
+      </div>
+    </a>
+
+    <!-- Card 3: Overdue -->
+    <a href="{% url 'task_list' %}?project={{ selected_project }}&assignee={{ selected_assignee }}&date_to={{ today|date:'Y-m-d' }}" class="bg-white p-4 rounded-xl border {% if kpis.overdue_count > 0 %}border-rose-300 bg-rose-50/20{% else %}border-slate-200{% endif %} shadow-sm hover:shadow-md transition-all group">
+      <span class="text-[11px] font-bold {% if kpis.overdue_count > 0 %}text-rose-700{% else %}text-slate-400{% endif %} uppercase tracking-wider block mb-1">Overdue</span>
+      <div class="flex items-baseline justify-between">
+        <span class="text-2xl font-black {% if kpis.overdue_count > 0 %}text-rose-600{% else %}text-slate-900{% endif %}">{{ kpis.overdue_count }}</span>
+        <span class="text-xs text-slate-400">Action req.</span>
+      </div>
+    </a>
+
+    <!-- Card 4: Blocked -->
+    <a href="{% url 'task_list' %}?status=BLOCKED&project={{ selected_project }}&assignee={{ selected_assignee }}" class="bg-white p-4 rounded-xl border {% if kpis.blocked_count > 0 %}border-amber-300 bg-amber-50/20{% else %}border-slate-200{% endif %} shadow-sm hover:shadow-md transition-all group">
+      <span class="text-[11px] font-bold {% if kpis.blocked_count > 0 %}text-amber-800{% else %}text-slate-400{% endif %} uppercase tracking-wider block mb-1">Blocked</span>
+      <div class="flex items-baseline justify-between">
+        <span class="text-2xl font-black {% if kpis.blocked_count > 0 %}text-amber-600{% else %}text-slate-900{% endif %}">{{ kpis.blocked_count }}</span>
+        <span class="text-xs text-slate-400">Bottlenecks</span>
+      </div>
+    </a>
+
+    <!-- Card 5: Unassigned -->
+    <a href="{% url 'task_list' %}?assignee=unassigned&project={{ selected_project }}" class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:border-indigo-300 hover:shadow-md transition-all group">
+      <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Unassigned</span>
+      <div class="flex items-baseline justify-between">
+        <span class="text-2xl font-black text-slate-900 group-hover:text-indigo-600 transition-colors">{{ kpis.unassigned_count }}</span>
+        <span class="text-xs text-slate-400">Backlog</span>
+      </div>
+    </a>
+
+    <!-- Card 6: Completion Rate -->
+    <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
+      <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Completion Rate</span>
+      <div class="flex items-baseline justify-between">
+        <span class="text-2xl font-black text-indigo-600">{{ kpis.completion_rate }}%</span>
+        <span class="text-xs text-slate-400 font-mono">{{ kpis.completed_total }}/{{ kpis.total_tasks }}</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Charts Row 1: Status Distribution & Priority Breakdown -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <!-- Chart: Status Breakdown -->
+    <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-4">
+      <div class="flex items-center justify-between">
+        <h3 class="text-sm font-bold text-slate-800">Tasks by Status</h3>
+        <span class="text-xs text-slate-400">Active distribution</span>
+      </div>
+      <div class="h-64 flex items-center justify-center">
+        <canvas id="statusChart"></canvas>
+      </div>
+    </div>
+
+    <!-- Chart: Priority Breakdown -->
+    <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-4">
+      <div class="flex items-center justify-between">
+        <h3 class="text-sm font-bold text-slate-800">Tasks by Priority</h3>
+        <span class="text-xs text-slate-400">Urgency allocation</span>
+      </div>
+      <div class="h-64 flex items-center justify-center">
+        <canvas id="priorityChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Charts Row 2: Assignee Load & 14-Day Delivery Trend -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <!-- Chart: Workload by Assignee -->
+    <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-4">
+      <div class="flex items-center justify-between">
+        <h3 class="text-sm font-bold text-slate-800">Tasks by Assignee</h3>
+        <span class="text-xs text-slate-400">Open vs Completed</span>
+      </div>
+      <div class="h-64 flex items-center justify-center">
+        <canvas id="assigneeChart"></canvas>
+      </div>
+    </div>
+
+    <!-- Chart: 14-Day Completion vs Creation Trend -->
+    <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-4">
+      <div class="flex items-center justify-between">
+        <h3 class="text-sm font-bold text-slate-800">14-Day Velocity & Throughput</h3>
+        <span class="text-xs text-slate-400">Created vs Completed</span>
+      </div>
+      <div class="h-64 flex items-center justify-center">
+        <canvas id="trendChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recently Updated Tasks Table -->
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+    <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+      <h3 class="text-sm font-bold text-slate-800">Recently Updated Tasks</h3>
+      <a href="{% url 'task_list' %}" class="text-xs font-semibold text-indigo-600 hover:text-indigo-800">View All Tasks &rarr;</a>
+    </div>
+
+    <table class="w-full text-left text-xs">
+      <thead class="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold uppercase">
+        <tr>
+          <th class="px-6 py-3">Task</th>
+          <th class="px-4 py-3">Project</th>
+          <th class="px-4 py-3">Status</th>
+          <th class="px-4 py-3">Assignee</th>
+          <th class="px-4 py-3">Due Date</th>
+          <th class="px-4 py-3 text-right">Updated</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100">
+        {% for task in recent_tasks %}
+          <tr class="hover:bg-slate-50/70 transition-colors">
+            <td class="px-6 py-3.5 font-medium">
+              <a href="{% url 'task_detail' task_id=task.id %}" class="text-slate-900 hover:text-indigo-600 font-semibold flex items-center gap-2">
+                <span class="text-slate-400 font-mono text-[11px]">{{ task.identifier }}</span>
+                <span class="truncate">{{ task.title }}</span>
+              </a>
+            </td>
+            <td class="px-4 py-3.5 text-slate-700 font-medium">
+              {{ task.project.name }}
+            </td>
+            <td class="px-4 py-3.5">
+              <span class="status-badge status-{{ task.status }}">{{ task.get_status_display }}</span>
+            </td>
+            <td class="px-4 py-3.5 text-slate-600">
+              {% if task.assignee %}
+                {{ task.assignee.get_full_name|default:task.assignee.username }}
+              {% else %}
+                <span class="text-slate-400 italic">Unassigned</span>
+              {% endif %}
+            </td>
+            <td class="px-4 py-3.5 font-mono {% if task.is_overdue %}text-rose-600 font-bold{% else %}text-slate-500{% endif %}">
+              {{ task.due_date|date:"M d, Y"|default:"-" }}
+            </td>
+            <td class="px-4 py-3.5 text-slate-400 text-right font-mono">
+              {{ task.updated_at|timesince }} ago
+            </td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="6" class="px-6 py-8 text-center text-slate-400 italic">No tasks found.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  const statusData = {{ status_chart_json|safe }};
+  const priorityData = {{ priority_chart_json|safe }};
+  const assigneeData = {{ assignee_chart_json|safe }};
+  const trendData = {{ trend_chart_json|safe }};
+
+  // 1. Status Chart (Doughnut)
+  const ctxStatus = document.getElementById('statusChart');
+  if (ctxStatus) {
+    new Chart(ctxStatus, {
+      type: 'doughnut',
+      data: {
+        labels: statusData.labels,
+        datasets: [{
+          data: statusData.data,
+          backgroundColor: statusData.colors,
+          borderWidth: 2,
+          borderColor: '#ffffff',
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } }
+        }
+      }
+    });
+  }
+
+  // 2. Priority Chart (Bar)
+  const ctxPriority = document.getElementById('priorityChart');
+  if (ctxPriority) {
+    new Chart(ctxPriority, {
+      type: 'bar',
+      data: {
+        labels: priorityData.labels,
+        datasets: [{
+          label: 'Tasks',
+          data: priorityData.data,
+          backgroundColor: priorityData.colors,
+          borderRadius: 6,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: { beginAtZero: true, ticks: { precision: 0 } },
+          x: { grid: { display: false } }
+        }
+      }
+    });
+  }
+
+  // 3. Assignee Chart (Stacked Bar)
+  const ctxAssignee = document.getElementById('assigneeChart');
+  if (ctxAssignee) {
+    new Chart(ctxAssignee, {
+      type: 'bar',
+      data: {
+        labels: assigneeData.labels,
+        datasets: [
+          { label: 'Open Tasks', data: assigneeData.data_open, backgroundColor: '#4f46e5', borderRadius: 4 },
+          { label: 'Completed', data: assigneeData.data_done, backgroundColor: '#10b981', borderRadius: 4 },
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: { stacked: true, grid: { display: false } },
+          y: { stacked: true, beginAtZero: true, ticks: { precision: 0 } }
+        },
+        plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } }
+      }
+    });
+  }
+
+  // 4. Trend Chart (Line)
+  const ctxTrend = document.getElementById('trendChart');
+  if (ctxTrend) {
+    new Chart(ctxTrend, {
+      type: 'line',
+      data: {
+        labels: trendData.labels,
+        datasets: [
+          {
+            label: 'Completed Tasks',
+            data: trendData.completed_counts,
+            borderColor: '#10b981',
+            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+            tension: 0.3,
+            fill: true,
+          },
+          {
+            label: 'Created Tasks',
+            data: trendData.created_counts,
+            borderColor: '#6366f1',
+            backgroundColor: 'rgba(99, 102, 241, 0.05)',
+            tension: 0.3,
+            fill: true,
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          y: { beginAtZero: true, ticks: { precision: 0 } },
+          x: { grid: { display: false } }
+        },
+        plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } }
+      }
+    });
+  }
+</script>
+{% endblock %}

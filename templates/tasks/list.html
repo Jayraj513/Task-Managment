@@ -1,0 +1,232 @@
+{% extends 'base.html' %}
+
+{% block title %}Task List — Workline{% endblock %}
+
+{% block content %}
+<div class="space-y-4">
+  <!-- Header & Toolbar -->
+  <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-4">
+    <div class="flex items-center gap-3">
+      <h1 class="text-lg font-bold text-slate-900 tracking-tight">Task List</h1>
+      <span class="text-xs text-slate-400 font-medium">({{ page_obj.paginator.count }} total tasks)</span>
+    </div>
+
+    <!-- Actions & Export -->
+    <div class="flex items-center gap-2">
+      <a href="{% url 'export_tasks_csv' %}?project={{ selected_project }}&assignee={{ selected_assignee }}&status={{ selected_status }}&priority={{ selected_priority }}&q={{ q }}" class="px-3 py-1.5 border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-semibold shadow-sm flex items-center gap-1.5 transition-colors">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+        <span>Export CSV</span>
+      </a>
+      {% if can_mutate_tasks %}
+        <a href="{% url 'task_create' %}" class="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-sm flex items-center gap-1.5 transition-colors">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+          <span>New Task</span>
+        </a>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Filter Bar -->
+  <div class="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm">
+    <form method="GET" class="flex flex-wrap items-center gap-3 text-xs">
+      <input type="hidden" name="sort" value="{{ sort_by }}">
+
+      <!-- Project -->
+      <select name="project" onchange="this.form.submit()" class="px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white focus:outline-none">
+        <option value="all">All Projects</option>
+        {% for p in projects %}
+          <option value="{{ p.id }}" {% if selected_project == p.id|stringformat:"s" %}selected{% endif %}>{{ p.name }} ({{ p.key }})</option>
+        {% endfor %}
+      </select>
+
+      <!-- Assignee -->
+      <select name="assignee" onchange="this.form.submit()" class="px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white focus:outline-none">
+        <option value="all">All Assignees</option>
+        <option value="unassigned" {% if selected_assignee == 'unassigned' %}selected{% endif %}>Unassigned</option>
+        {% for u in users %}
+          <option value="{{ u.id }}" {% if selected_assignee == u.id|stringformat:"s" %}selected{% endif %}>{{ u.get_full_name|default:u.username }}</option>
+        {% endfor %}
+      </select>
+
+      <!-- Status -->
+      <select name="status" onchange="this.form.submit()" class="px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white focus:outline-none">
+        <option value="all">All Statuses</option>
+        {% for sval, slabel in status_choices %}
+          <option value="{{ sval }}" {% if selected_status == sval %}selected{% endif %}>{{ slabel }}</option>
+        {% endfor %}
+      </select>
+
+      <!-- Priority -->
+      <select name="priority" onchange="this.form.submit()" class="px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white focus:outline-none">
+        <option value="all">All Priorities</option>
+        {% for pval, plabel in priority_choices %}
+          <option value="{{ pval }}" {% if selected_priority == pval %}selected{% endif %}>{{ plabel }}</option>
+        {% endfor %}
+      </select>
+
+      <!-- Search -->
+      <div class="relative">
+        <input type="text" name="q" value="{{ q }}" placeholder="Search title..." class="pl-7 pr-3 py-1.5 border border-slate-300 rounded-lg focus:outline-none w-44">
+        <svg class="w-3.5 h-3.5 text-slate-400 absolute left-2 top-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+      </div>
+
+      <button type="submit" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-semibold">Filter</button>
+      {% if selected_project != 'all' or selected_assignee != 'all' or selected_status != 'all' or selected_priority != 'all' or q %}
+        <a href="{% url 'task_list' %}" class="text-indigo-600 hover:text-indigo-800 text-xs font-medium ml-1">Reset Filters</a>
+      {% endif %}
+    </form>
+  </div>
+
+  <!-- Table Card -->
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+    <div class="overflow-x-auto">
+      <table class="w-full text-left text-xs">
+        <thead class="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-semibold uppercase">
+          <tr>
+            <th class="px-6 py-3.5">
+              <a href="?sort={% if sort_by == 'title' %}-title{% else %}title{% endif %}&project={{ selected_project }}&assignee={{ selected_assignee }}&status={{ selected_status }}&priority={{ selected_priority }}&q={{ q }}" class="hover:text-slate-800 flex items-center gap-1">
+                <span>Task</span>
+                {% if 'title' in sort_by %}&#8597;{% endif %}
+              </a>
+            </th>
+            <th class="px-4 py-3.5">Project</th>
+            <th class="px-4 py-3.5">
+              <a href="?sort={% if sort_by == 'status' %}-status{% else %}status{% endif %}&project={{ selected_project }}&assignee={{ selected_assignee }}&status={{ selected_status }}&priority={{ selected_priority }}&q={{ q }}" class="hover:text-slate-800 flex items-center gap-1">
+                <span>Status</span>
+                {% if 'status' in sort_by %}&#8597;{% endif %}
+              </a>
+            </th>
+            <th class="px-4 py-3.5">
+              <a href="?sort={% if sort_by == 'priority' %}-priority{% else %}priority{% endif %}&project={{ selected_project }}&assignee={{ selected_assignee }}&status={{ selected_status }}&priority={{ selected_priority }}&q={{ q }}" class="hover:text-slate-800 flex items-center gap-1">
+                <span>Priority</span>
+                {% if 'priority' in sort_by %}&#8597;{% endif %}
+              </a>
+            </th>
+            <th class="px-4 py-3.5">Assignee</th>
+            <th class="px-4 py-3.5">
+              <a href="?sort={% if sort_by == 'due_date' %}-due_date{% else %}due_date{% endif %}&project={{ selected_project }}&assignee={{ selected_assignee }}&status={{ selected_status }}&priority={{ selected_priority }}&q={{ q }}" class="hover:text-slate-800 flex items-center gap-1">
+                <span>Due Date</span>
+                {% if 'due_date' in sort_by %}&#8597;{% endif %}
+              </a>
+            </th>
+            <th class="px-4 py-3.5">
+              <a href="?sort={% if sort_by == 'progress' %}-progress{% else %}progress{% endif %}&project={{ selected_project }}&assignee={{ selected_assignee }}&status={{ selected_status }}&priority={{ selected_priority }}&q={{ q }}" class="hover:text-slate-800 flex items-center gap-1">
+                <span>Progress</span>
+                {% if 'progress' in sort_by %}&#8597;{% endif %}
+              </a>
+            </th>
+            <th class="px-6 py-3.5 text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          {% for task in page_obj %}
+            <tr class="hover:bg-slate-50/60 transition-colors">
+              <!-- Title & Identifier -->
+              <td class="px-6 py-3.5 font-medium max-w-sm">
+                <a href="{% url 'task_detail' task_id=task.id %}" class="text-slate-900 hover:text-indigo-600 font-semibold flex items-center gap-2">
+                  <span class="text-slate-400 font-mono text-[11px] shrink-0">{{ task.identifier }}</span>
+                  <span class="truncate">{{ task.title }}</span>
+                </a>
+                {% if task.tags.exists %}
+                  <div class="flex flex-wrap gap-1 mt-1">
+                    {% for tag in task.tags.all %}
+                      <span class="text-[9px] px-1 py-0.2 rounded bg-slate-100 text-slate-500 font-semibold">{{ tag.name }}</span>
+                    {% endfor %}
+                  </div>
+                {% endif %}
+              </td>
+
+              <!-- Project -->
+              <td class="px-4 py-3.5">
+                <div class="flex items-center gap-1.5">
+                  <span class="w-2 h-2 rounded-full shrink-0" style="background-color: {{ task.project.color }};"></span>
+                  <span class="text-slate-700 font-medium truncate">{{ task.project.name }}</span>
+                </div>
+              </td>
+
+              <!-- Status with Quick Inline Changer -->
+              <td class="px-4 py-3.5">
+                {% if can_mutate_tasks %}
+                  <select
+                    onchange="fetch('/tasks/api/{{ task.id }}/status/', {method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':csrftoken}, body:JSON.stringify({status:this.value})}).then(()=>location.reload())"
+                    class="text-[11px] font-semibold rounded-md px-2 py-0.5 border border-slate-200 bg-white focus:outline-none"
+                  >
+                    {% for sval, slabel in status_choices %}
+                      <option value="{{ sval }}" {% if task.status == sval %}selected{% endif %}>{{ slabel }}</option>
+                    {% endfor %}
+                  </select>
+                {% else %}
+                  <span class="status-badge status-{{ task.status }}">{{ task.get_status_display }}</span>
+                {% endif %}
+              </td>
+
+              <!-- Priority -->
+              <td class="px-4 py-3.5">
+                <span class="priority-badge priority-{{ task.priority }}">{{ task.get_priority_display }}</span>
+              </td>
+
+              <!-- Assignee -->
+              <td class="px-4 py-3.5">
+                {% if task.assignee %}
+                  <div class="flex items-center gap-2">
+                    <div class="w-5 h-5 rounded-full flex items-center justify-center font-bold text-[9px] text-white shrink-0" style="background-color: {{ task.assignee.profile.avatar_color|default:'#4f46e5' }};">
+                      {{ task.assignee.profile.initials|default:"U" }}
+                    </div>
+                    <span class="text-slate-700 truncate">{{ task.assignee.get_full_name|default:task.assignee.username }}</span>
+                  </div>
+                {% else %}
+                  <span class="text-slate-400 italic">Unassigned</span>
+                {% endif %}
+              </td>
+
+              <!-- Due Date -->
+              <td class="px-4 py-3.5 font-mono {% if task.is_overdue %}text-rose-600 font-bold{% else %}text-slate-500{% endif %}">
+                {{ task.due_date|date:"M d, Y"|default:"-" }}
+              </td>
+
+              <!-- Progress -->
+              <td class="px-4 py-3.5">
+                <div class="flex items-center gap-2">
+                  <div class="w-16 bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                    <div class="bg-indigo-600 h-1.5 rounded-full" style="width: {{ task.progress_percent }}%;"></div>
+                  </div>
+                  <span class="text-[11px] text-slate-500 font-mono">{{ task.progress_percent }}%</span>
+                </div>
+              </td>
+
+              <!-- Actions -->
+              <td class="px-6 py-3.5 text-right">
+                <a href="{% url 'task_detail' task_id=task.id %}" class="text-indigo-600 hover:text-indigo-800 font-semibold mr-2">View</a>
+                {% if can_mutate_tasks %}
+                  <a href="{% url 'task_edit' task_id=task.id %}" class="text-slate-400 hover:text-slate-600">Edit</a>
+                {% endif %}
+              </td>
+            </tr>
+          {% empty %}
+            <tr>
+              <td colspan="8" class="px-6 py-12 text-center text-slate-400 italic">No tasks match the active filters.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Pagination -->
+    {% if page_obj.has_other_pages %}
+      <div class="px-6 py-3.5 border-t border-slate-100 flex items-center justify-between text-xs bg-slate-50/50">
+        <span class="text-slate-500">
+          Showing page <strong>{{ page_obj.number }}</strong> of <strong>{{ page_obj.paginator.num_pages }}</strong>
+        </span>
+        <div class="flex items-center gap-1">
+          {% if page_obj.has_previous %}
+            <a href="?page={{ page_obj.previous_page_number }}&sort={{ sort_by }}&project={{ selected_project }}&assignee={{ selected_assignee }}&status={{ selected_status }}&priority={{ selected_priority }}&q={{ q }}" class="px-3 py-1 border border-slate-200 rounded hover:bg-slate-100 text-slate-600">Previous</a>
+          {% endif %}
+          {% if page_obj.has_next %}
+            <a href="?page={{ page_obj.next_page_number }}&sort={{ sort_by }}&project={{ selected_project }}&assignee={{ selected_assignee }}&status={{ selected_status }}&priority={{ selected_priority }}&q={{ q }}" class="px-3 py-1 border border-slate-200 rounded hover:bg-slate-100 text-slate-600">Next</a>
+          {% endif %}
+        </div>
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

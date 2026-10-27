@@ -1,0 +1,147 @@
+{% extends 'base.html' %}
+
+{% block title %}Sign In — Workline Team Management{% endblock %}
+
+{% block unauth_content %}
+<div class="min-h-full flex items-center justify-center p-6 bg-slate-900">
+  <div class="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-800/20 overflow-hidden">
+    <!-- Header -->
+    <div class="p-8 text-center bg-gradient-to-b from-slate-50 to-white border-b border-slate-100">
+      <div class="inline-flex w-12 h-12 rounded-xl bg-gradient-to-tr from-indigo-600 to-indigo-400 items-center justify-center text-white font-extrabold text-2xl shadow-lg shadow-indigo-500/30 mb-3">
+        W
+      </div>
+      <h1 class="text-2xl font-bold text-slate-900 tracking-tight">Workline</h1>
+      <p class="text-xs text-slate-500 mt-1">High-efficiency work and project management for engineering teams</p>
+    </div>
+
+    <!-- Login Form -->
+    <div class="p-8 space-y-6">
+      {% if error_message %}
+        <div class="p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold flex items-center gap-2">
+          <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          <span>{{ error_message }}</span>
+        </div>
+      {% endif %}
+
+      <form method="POST" action="{% url 'login' %}" class="space-y-4">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ next }}">
+
+        <div>
+          <label for="username" class="block text-xs font-semibold text-slate-700 mb-1">Username</label>
+          <input
+            type="text"
+            id="username"
+            name="username"
+            required
+            placeholder="e.g. admin or manager"
+            class="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
+          >
+        </div>
+
+        <div>
+          <div class="flex items-center justify-between mb-1">
+            <label for="password" class="block text-xs font-semibold text-slate-700">Password</label>
+            <span class="text-[11px] text-indigo-600 font-mono">WorklineDemo2026!</span>
+          </div>
+          <input
+            type="password"
+            id="password"
+            name="password"
+            required
+            placeholder="••••••••••••"
+            class="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
+          >
+        </div>
+
+        <button
+          type="submit"
+          class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-semibold shadow-md shadow-indigo-600/20 transition-colors focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+        >
+          Sign In to Workspace
+        </button>
+      </form>
+
+      <!-- 1-Click Demo Accounts Quick Switcher -->
+      <div class="pt-4 border-t border-slate-100">
+        <div class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider text-center mb-3">
+          1-Click Demo Quick Login
+        </div>
+        
+        <form method="POST" action="{% url 'login' %}" class="grid grid-cols-2 gap-2 text-xs">
+          {% csrf_token %}
+          <button
+            type="submit"
+            name="quick_user"
+            value="admin"
+            class="p-2 border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/50 rounded-lg text-left transition-colors flex items-center justify-between"
+          >
+            <div>
+              <div class="font-bold text-slate-800">Sarah Vance</div>
+              <div class="text-[10px] text-rose-600 font-semibold">Admin</div>
+            </div>
+            <span class="text-slate-400">&rarr;</span>
+          </button>
+
+          <button
+            type="submit"
+            name="quick_user"
+            value="manager"
+            class="p-2 border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/50 rounded-lg text-left transition-colors flex items-center justify-between"
+          >
+            <div>
+              <div class="font-bold text-slate-800">Marcus Brody</div>
+              <div class="text-[10px] text-indigo-600 font-semibold">Manager</div>
+            </div>
+            <span class="text-slate-400">&rarr;</span>
+          </button>
+
+          <button
+            type="submit"
+            name="quick_user"
+            value="alex"
+            class="p-2 border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/50 rounded-lg text-left transition-colors flex items-center justify-between"
+          >
+            <div>
+              <div class="font-bold text-slate-800">Alex Rivera</div>
+              <div class="text-[10px] text-emerald-600 font-semibold">Member (Frontend)</div>
+            </div>
+            <span class="text-slate-400">&rarr;</span>
+          </button>
+
+          <button
+            type="submit"
+            name="quick_user"
+            value="maya"
+            class="p-2 border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/50 rounded-lg text-left transition-colors flex items-center justify-between"
+          >
+            <div>
+              <div class="font-bold text-slate-800">Maya Chen</div>
+              <div class="text-[10px] text-amber-600 font-semibold">Member (Backend)</div>
+            </div>
+            <span class="text-slate-400">&rarr;</span>
+          </button>
+
+          <button
+            type="submit"
+            name="quick_user"
+            value="taylor"
+            class="col-span-2 p-2 border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/50 rounded-lg text-left transition-colors flex items-center justify-between"
+          >
+            <div>
+              <div class="font-bold text-slate-800">Taylor Jordan</div>
+              <div class="text-[10px] text-purple-600 font-semibold">Viewer (Read-Only Stakeholder)</div>
+            </div>
+            <span class="text-slate-400">&rarr;</span>
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Footer Note -->
+    <div class="px-8 py-3 bg-slate-50 border-t border-slate-100 text-center text-[11px] text-slate-400">
+      Workline Pilot Edition &bull; SQLite Local / PostgreSQL Staging
+    </div>
+  </div>
+</div>
+{% endblock %}

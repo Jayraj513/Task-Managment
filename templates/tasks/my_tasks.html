@@ -1,0 +1,183 @@
+{% extends 'base.html' %}
+
+{% block title %}My Tasks — Workline{% endblock %}
+
+{% block content %}
+<div class="space-y-6 max-w-5xl mx-auto">
+  <!-- Header & Toolbar -->
+  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div>
+      <h1 class="text-xl font-bold text-slate-900 tracking-tight">My Tasks</h1>
+      <p class="text-xs text-slate-500 mt-0.5">Tasks assigned directly to you across all projects</p>
+    </div>
+
+    <!-- Quick Filters -->
+    <form method="GET" class="flex items-center gap-2 text-xs">
+      <select name="status" onchange="this.form.submit()" class="px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white focus:outline-none">
+        <option value="all">All Statuses</option>
+        {% for sval, slabel in status_choices %}
+          <option value="{{ sval }}" {% if selected_status == sval %}selected{% endif %}>{{ slabel }}</option>
+        {% endfor %}
+      </select>
+
+      <select name="priority" onchange="this.form.submit()" class="px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white focus:outline-none">
+        <option value="all">All Priorities</option>
+        {% for pval, plabel in priority_choices %}
+          <option value="{{ pval }}" {% if selected_priority == pval %}selected{% endif %}>{{ plabel }}</option>
+        {% endfor %}
+      </select>
+
+      {% if selected_status != 'all' or selected_priority != 'all' %}
+        <a href="{% url 'my_tasks' %}" class="text-indigo-600 hover:text-indigo-800 text-xs font-semibold ml-1">Reset</a>
+      {% endif %}
+    </form>
+  </div>
+
+  <!-- SECTION 1: Overdue Tasks -->
+  {% if overdue_tasks %}
+    <div class="bg-white rounded-xl border border-rose-200 shadow-sm overflow-hidden">
+      <div class="px-5 py-3 bg-rose-50/70 border-b border-rose-100 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <svg class="w-4 h-4 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+          <h2 class="text-xs font-bold text-rose-900 uppercase tracking-wider">Overdue</h2>
+        </div>
+        <span class="text-xs font-bold px-2 py-0.5 rounded-full bg-rose-200 text-rose-800">{{ overdue_tasks|length }}</span>
+      </div>
+
+      <div class="divide-y divide-rose-50">
+        {% for task in overdue_tasks %}
+          <div class="p-4 hover:bg-rose-50/30 transition-colors flex items-center justify-between gap-4">
+            <div class="flex items-start gap-3 min-w-0">
+              <span class="w-2.5 h-2.5 rounded-full mt-1.5 shrink-0" style="background-color: {{ task.project.color }};"></span>
+              <div class="min-w-0">
+                <a href="{% url 'task_detail' task_id=task.id %}" class="text-sm font-bold text-slate-900 hover:text-indigo-600 truncate block">
+                  <span class="text-slate-400 font-mono text-xs mr-1">{{ task.identifier }}</span>
+                  {{ task.title }}
+                </a>
+                <div class="flex items-center gap-2 mt-1 text-[11px] text-slate-500">
+                  <span>{{ task.project.name }}</span>
+                  <span>&bull;</span>
+                  <span class="text-rose-600 font-bold font-mono">Due {{ task.due_date|date:"M d, Y" }}</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="flex items-center gap-3 shrink-0">
+              <span class="status-badge status-{{ task.status }}">{{ task.get_status_display }}</span>
+              <span class="priority-badge priority-{{ task.priority }}">{{ task.get_priority_display }}</span>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  {% endif %}
+
+  <!-- SECTION 2: Due Today -->
+  {% if today_tasks %}
+    <div class="bg-white rounded-xl border border-indigo-200 shadow-sm overflow-hidden">
+      <div class="px-5 py-3 bg-indigo-50/70 border-b border-indigo-100 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <svg class="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+          <h2 class="text-xs font-bold text-indigo-900 uppercase tracking-wider">Due Today</h2>
+        </div>
+        <span class="text-xs font-bold px-2 py-0.5 rounded-full bg-indigo-200 text-indigo-800">{{ today_tasks|length }}</span>
+      </div>
+
+      <div class="divide-y divide-indigo-50">
+        {% for task in today_tasks %}
+          <div class="p-4 hover:bg-indigo-50/20 transition-colors flex items-center justify-between gap-4">
+            <div class="flex items-start gap-3 min-w-0">
+              <span class="w-2.5 h-2.5 rounded-full mt-1.5 shrink-0" style="background-color: {{ task.project.color }};"></span>
+              <div class="min-w-0">
+                <a href="{% url 'task_detail' task_id=task.id %}" class="text-sm font-bold text-slate-900 hover:text-indigo-600 truncate block">
+                  <span class="text-slate-400 font-mono text-xs mr-1">{{ task.identifier }}</span>
+                  {{ task.title }}
+                </a>
+                <div class="text-[11px] text-slate-500 mt-1">
+                  {{ task.project.name }} &bull; <strong class="text-indigo-700">Today</strong>
+                </div>
+              </div>
+            </div>
+
+            <div class="flex items-center gap-3 shrink-0">
+              <span class="status-badge status-{{ task.status }}">{{ task.get_status_display }}</span>
+              <span class="priority-badge priority-{{ task.priority }}">{{ task.get_priority_display }}</span>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  {% endif %}
+
+  <!-- SECTION 3: Upcoming Tasks -->
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+    <div class="px-5 py-3 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <svg class="w-4 h-4 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+        <h2 class="text-xs font-bold text-slate-800 uppercase tracking-wider">Upcoming</h2>
+      </div>
+      <span class="text-xs font-bold px-2 py-0.5 rounded-full bg-slate-200 text-slate-700">{{ upcoming_tasks|length }}</span>
+    </div>
+
+    <div class="divide-y divide-slate-100">
+      {% for task in upcoming_tasks %}
+        <div class="p-4 hover:bg-slate-50/60 transition-colors flex items-center justify-between gap-4">
+          <div class="flex items-start gap-3 min-w-0">
+            <span class="w-2.5 h-2.5 rounded-full mt-1.5 shrink-0" style="background-color: {{ task.project.color }};"></span>
+            <div class="min-w-0">
+              <a href="{% url 'task_detail' task_id=task.id %}" class="text-sm font-bold text-slate-900 hover:text-indigo-600 truncate block">
+                <span class="text-slate-400 font-mono text-xs mr-1">{{ task.identifier }}</span>
+                {{ task.title }}
+              </a>
+              <div class="text-[11px] text-slate-500 mt-1">
+                {{ task.project.name }} &bull; Due {{ task.due_date|date:"M d, Y"|default:"No due date" }}
+              </div>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-3 shrink-0">
+            <span class="status-badge status-{{ task.status }}">{{ task.get_status_display }}</span>
+            <span class="priority-badge priority-{{ task.priority }}">{{ task.get_priority_display }}</span>
+          </div>
+        </div>
+      {% empty %}
+        <div class="p-8 text-center text-xs text-slate-400 italic">No upcoming tasks.</div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- SECTION 4: Completed Tasks -->
+  {% if completed_tasks %}
+    <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <div class="px-5 py-3 bg-emerald-50/50 border-b border-emerald-100 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <svg class="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          <h2 class="text-xs font-bold text-emerald-900 uppercase tracking-wider">Completed</h2>
+        </div>
+        <span class="text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-200 text-emerald-800">{{ completed_tasks|length }}</span>
+      </div>
+
+      <div class="divide-y divide-slate-100">
+        {% for task in completed_tasks %}
+          <div class="p-4 hover:bg-slate-50/40 transition-colors flex items-center justify-between gap-4 opacity-75">
+            <div class="flex items-start gap-3 min-w-0">
+              <span class="w-2.5 h-2.5 rounded-full mt-1.5 shrink-0 bg-emerald-500"></span>
+              <div class="min-w-0">
+                <a href="{% url 'task_detail' task_id=task.id %}" class="text-sm font-semibold text-slate-700 hover:text-indigo-600 line-through truncate block">
+                  <span class="text-slate-400 font-mono text-xs mr-1">{{ task.identifier }}</span>
+                  {{ task.title }}
+                </a>
+                <div class="text-[11px] text-slate-400 mt-1">
+                  {{ task.project.name }} &bull; Completed
+                </div>
+              </div>
+            </div>
+
+            <span class="status-badge status-DONE">Done &check;</span>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

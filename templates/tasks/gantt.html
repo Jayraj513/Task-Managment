@@ -1,0 +1,241 @@
+{% extends 'base.html' %}
+
+{% block title %}Gantt Timeline — Workline{% endblock %}
+
+{% block content %}
+<div class="h-full flex flex-col space-y-4">
+  <!-- Header & Toolbar -->
+  <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-4 shrink-0">
+    <div>
+      <h1 class="text-lg font-bold text-slate-900 tracking-tight">Gantt Timeline</h1>
+      <p class="text-xs text-slate-500 mt-0.5">Visualize project schedules, duration spans, dependency links, and milestones</p>
+    </div>
+
+    <!-- Filters & Zoom -->
+    <div class="flex items-center gap-3">
+      <form method="GET" class="flex flex-wrap items-center gap-2 text-xs">
+        <select name="project" onchange="this.form.submit()" class="px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white focus:outline-none">
+          <option value="all">All Projects</option>
+          {% for p in projects %}
+            <option value="{{ p.id }}" {% if selected_project == p.id|stringformat:"s" %}selected{% endif %}>{{ p.name }} ({{ p.key }})</option>
+          {% endfor %}
+        </select>
+
+        <select name="assignee" onchange="this.form.submit()" class="px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white focus:outline-none">
+          <option value="all">All Assignees</option>
+          <option value="unassigned" {% if selected_assignee == 'unassigned' %}selected{% endif %}>Unassigned</option>
+          {% for u in users %}
+            <option value="{{ u.id }}" {% if selected_assignee == u.id|stringformat:"s" %}selected{% endif %}>{{ u.get_full_name|default:u.username }}</option>
+          {% endfor %}
+        </select>
+
+        <button type="submit" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-semibold">Filter</button>
+        {% if selected_project != 'all' or selected_assignee != 'all' %}
+          <a href="{% url 'task_gantt' %}" class="text-indigo-600 hover:text-indigo-800 text-xs font-medium ml-1">Reset</a>
+        {% endif %}
+      </form>
+    </div>
+  </div>
+
+  <!-- Legend -->
+  <div class="flex items-center gap-6 px-4 py-2 bg-white rounded-lg border border-slate-200 text-xs text-slate-600">
+    <div class="flex items-center gap-2">
+      <span class="w-3.5 h-2.5 rounded bg-indigo-600"></span>
+      <span>Task Duration</span>
+    </div>
+    <div class="flex items-center gap-2">
+      <span class="w-3.5 h-2.5 rounded bg-emerald-500"></span>
+      <span>Completed Task</span>
+    </div>
+    <div class="flex items-center gap-2">
+      <svg class="w-3.5 h-3.5 text-amber-500" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2l2.5 5 5.5.5-4 4 1 5.5-5-3-5 3 1-5.5-4-4 5.5-.5z"/></svg>
+      <span>Project Milestone</span>
+    </div>
+    <div class="flex items-center gap-2">
+      <span class="w-4 border-t-2 border-dashed border-indigo-500"></span>
+      <span>Dependency Link</span>
+    </div>
+  </div>
+
+  <!-- Gantt Canvas Container -->
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm flex-1 overflow-auto p-4 min-h-[500px]">
+    {% if tasks_count > 0 %}
+      <div id="gantt-svg-container" class="min-w-[950px]"></div>
+    {% else %}
+      <div class="h-64 flex flex-col items-center justify-center text-slate-400 italic">
+        <svg class="w-10 h-10 mb-2 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"/></svg>
+        <span>No tasks match the active filters for Gantt visualization.</span>
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  const tasksData = {{ gantt_tasks_json|safe }};
+  const depsData = {{ dependencies_json|safe }};
+  const milestonesData = {{ milestones_json|safe }};
+
+  function renderGantt() {
+    const container = document.getElementById('gantt-svg-container');
+    if (!container || !tasksData.length) return;
+
+    // Determine timeline range
+    let minDate = new Date(tasksData[0].start);
+    let maxDate = new Date(tasksData[0].end);
+
+    tasksData.forEach(t => {
+      const s = new Date(t.start);
+      const e = new Date(t.end);
+      if (s < minDate) minDate = s;
+      if (e > maxDate) maxDate = e;
+    });
+
+    // Add padding days
+    minDate.setDate(minDate.getDate() - 3);
+    maxDate.setDate(maxDate.getDate() + 7);
+
+    const totalDays = Math.max(15, Math.ceil((maxDate - minDate) / (1000 * 60 * 60 * 24)));
+    const dayWidth = 42;
+    const rowHeight = 44;
+    const headerHeight = 48;
+    const sidebarWidth = 260;
+    const totalWidth = sidebarWidth + (totalDays * dayWidth);
+    const totalHeight = headerHeight + (tasksData.length * rowHeight) + 40;
+
+    let svgHtml = `
+      <svg width="${totalWidth}" height="${totalHeight}" class="font-sans text-xs">
+        <!-- Background Grid -->
+        <defs>
+          <pattern id="grid" width="${dayWidth}" height="${rowHeight}" patternUnits="userSpaceOnUse">
+            <rect width="${dayWidth}" height="${rowHeight}" fill="none" stroke="#f1f5f9" stroke-width="1"/>
+          </pattern>
+        </defs>
+
+        <!-- Sidebar Background -->
+        <rect x="0" y="0" width="${sidebarWidth}" height="${totalHeight}" fill="#fafafa" stroke="#e2e8f0"/>
+        
+        <!-- Header row -->
+        <rect x="0" y="0" width="${totalWidth}" height="${headerHeight}" fill="#f8fafc" stroke="#e2e8f0"/>
+        <text x="16" y="${headerHeight / 2 + 5}" font-weight="bold" fill="#475569">TASK / MILESTONE</text>
+    `;
+
+    // Timeline Days Header
+    for (let i = 0; i < totalDays; i++) {
+      const curDate = new Date(minDate);
+      curDate.setDate(curDate.getDate() + i);
+      const x = sidebarWidth + (i * dayWidth);
+      const dayLabel = curDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      const isWeekend = (curDate.getDay() === 0 || curDate.getDay() === 6);
+
+      svgHtml += `
+        <rect x="${x}" y="0" width="${dayWidth}" height="${headerHeight}" fill="${isWeekend ? '#f1f5f9' : '#f8fafc'}" stroke="#e2e8f0"/>
+        <text x="${x + dayWidth / 2}" y="${headerHeight / 2 + 4}" font-size="10" text-anchor="middle" fill="#64748b" font-weight="${isWeekend ? 'bold' : 'normal'}">
+          ${dayLabel}
+        </text>
+        <line x1="${x}" y1="${headerHeight}" x2="${x}" y2="${totalHeight}" stroke="${isWeekend ? '#e2e8f0' : '#f8fafc'}" stroke-width="1"/>
+      `;
+    }
+
+    // Task rows and bars
+    const taskCoords = {}; // taskId -> {x, y, w, h}
+
+    tasksData.forEach((task, idx) => {
+      const y = headerHeight + (idx * rowHeight);
+      const s = new Date(task.start);
+      const e = new Date(task.end);
+
+      const sOffset = Math.max(0, (s - minDate) / (1000 * 60 * 60 * 24));
+      const eOffset = Math.max(0, (e - minDate) / (1000 * 60 * 60 * 24));
+      const barX = sidebarWidth + (sOffset * dayWidth);
+      const barW = Math.max(dayWidth * 0.8, (eOffset - sOffset + 1) * dayWidth);
+      const barH = 24;
+      const barY = y + 10;
+
+      taskCoords[task.id] = {
+        x: barX,
+        y: barY,
+        w: barW,
+        h: barH,
+        midX: barX + barW,
+        midY: barY + barH / 2,
+        startX: barX,
+      };
+
+      const barColor = task.status === 'DONE' ? '#10b981' : (task.status === 'BLOCKED' ? '#ef4444' : task.project_color || '#6366f1');
+
+      svgHtml += `
+        <!-- Row separator -->
+        <line x1="0" y1="${y + rowHeight}" x2="${totalWidth}" y2="${y + rowHeight}" stroke="#f1f5f9"/>
+
+        <!-- Sidebar Task Title -->
+        <a href="/tasks/${task.id}/" style="cursor: pointer;">
+          <circle cx="16" cy="${y + rowHeight / 2}" r="4" fill="${task.project_color || '#6366f1'}"/>
+          <text x="28" y="${y + rowHeight / 2 + 4}" font-weight="600" fill="#1e293b" class="hover:underline">
+            ${task.identifier}: ${task.title.length > 25 ? task.title.substring(0, 25) + '...' : task.title}
+          </text>
+        </a>
+
+        <!-- Task Bar on Timeline -->
+        <g class="gantt-bar-group" onclick="location.href='/tasks/${task.id}/'" style="cursor: pointer;">
+          <rect x="${barX}" y="${barY}" width="${barW}" height="${barH}" rx="5" fill="${barColor}" class="gantt-bar" opacity="0.9"/>
+          
+          <!-- Progress Overlay -->
+          ${task.progress > 0 ? `
+            <rect x="${barX}" y="${barY}" width="${barW * (task.progress / 100)}" height="${barH}" rx="5" fill="#ffffff" opacity="0.25"/>
+          ` : ''}
+
+          <!-- Bar Label -->
+          <text x="${barX + 8}" y="${barY + 16}" fill="#ffffff" font-size="10" font-weight="bold">
+            ${task.progress}% &bull; ${task.assignee}
+          </text>
+        </g>
+      `;
+    });
+
+    // Milestone pins on top
+    milestonesData.forEach(m => {
+      const mDate = new Date(m.due_date);
+      const offset = (mDate - minDate) / (1000 * 60 * 60 * 24);
+      if (offset >= 0 && offset <= totalDays) {
+        const mx = sidebarWidth + (offset * dayWidth) + (dayWidth / 2);
+        svgHtml += `
+          <g>
+            <line x1="${mx}" y1="${headerHeight}" x2="${mx}" y2="${totalHeight}" stroke="#f59e0b" stroke-dasharray="3,3" stroke-width="1.5"/>
+            <polygon points="${mx},${headerHeight - 14} ${mx + 7},${headerHeight - 2} ${mx - 7},${headerHeight - 2}" fill="#f59e0b"/>
+            <text x="${mx}" y="${headerHeight - 18}" font-size="9" font-weight="bold" fill="#b45309" text-anchor="middle">
+              ${m.name}
+            </text>
+          </g>
+        `;
+      }
+    });
+
+    // Dependency lines
+    depsData.forEach(dep => {
+      const fromTask = taskCoords[dep.from];
+      const toTask = taskCoords[dep.to];
+      if (fromTask && toTask) {
+        const x1 = fromTask.midX;
+        const y1 = fromTask.midY;
+        const x2 = toTask.startX;
+        const y2 = toTask.midY;
+
+        // Path with curved bezier
+        const midX = (x1 + x2) / 2;
+        svgHtml += `
+          <path d="M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}" class="gantt-dep-line"/>
+          <!-- Arrowhead -->
+          <polygon points="${x2},${y2} ${x2 - 5},${y2 - 3} ${x2 - 5},${y2 + 3}" fill="#6366f1"/>
+        `;
+      }
+    });
+
+    svgHtml += `</svg>`;
+    container.innerHTML = svgHtml;
+  }
+
+  document.addEventListener('DOMContentLoaded', renderGantt);
+</script>
+{% endblock %}
