@@ -1,31 +1,69 @@
 """
 Safe Neon PostgreSQL Migration & Admin Setup Script.
 Usage in PowerShell:
-$env:DATABASE_URL="postgresql://<user>:<password>@<host>/<database>?sslmode=require"
 python migrate_neon.py
-$env:DATABASE_URL=""
+(Prompts securely with hidden input if DATABASE_URL is not already in environment)
 """
 import sys
 sys.path.insert(0, r'D:\Task Management')
 
 import os
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'workline.settings')
+import getpass
 
-db_url = os.getenv('DATABASE_URL', '').strip()
+def clean_url(raw: str) -> str:
+    if not raw:
+        return ''
+    cleaned = raw.strip().strip('\'"`<> ')
+    if cleaned.startswith('psql '):
+        cleaned = cleaned[5:].strip().strip('\'"`<> ')
+    return cleaned
+
+# 1. Obtain DATABASE_URL securely in memory
+db_url = clean_url(os.getenv('DATABASE_URL', ''))
+
+if not db_url and sys.platform == 'win32':
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r'Environment') as key:
+            val, _ = winreg.QueryValueEx(key, 'DATABASE_URL')
+            db_url = clean_url(val or '')
+    except (FileNotFoundError, OSError):
+        pass
+
 if not db_url:
-    print("ERROR: DATABASE_URL environment variable is not set in this terminal session.")
-    print("Run: $env:DATABASE_URL=\"<your-neon-url>\" before running this script.")
+    print("=" * 65)
+    print("OGFLOW — Neon PostgreSQL Setup")
+    print("No DATABASE_URL found in environment.")
+    print("Please enter your Neon connection string below.")
+    print("(Input is masked/hidden, will NOT be saved to shell history or disk)")
+    print("=" * 65)
+    try:
+        raw_input = getpass.getpass("Enter Neon DATABASE_URL: ")
+        db_url = clean_url(raw_input)
+    except Exception as e:
+        print(f"Error reading input: {e}")
+        sys.exit(1)
+
+if not db_url:
+    print("ERROR: No connection string provided. Aborting.")
     sys.exit(1)
+
+if not (db_url.startswith('postgresql://') or db_url.startswith('postgres://')):
+    print("ERROR: Connection string must start with 'postgresql://' or 'postgres://'")
+    sys.exit(1)
+
+# Store in process memory only
+os.environ['DATABASE_URL'] = db_url
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'workline.settings')
 
 import django
 django.setup()
 
 from django.db import connection
 from django.core.management import call_command
-from django.contrib.auth.models import User
 
-# 1. Verify connection
-print("=== 1. VERIFYING NEON POSTGRESQL CONNECTION ===")
+# 2. Verify connection
+print("\n=== 1. VERIFYING NEON POSTGRESQL CONNECTION ===")
 with connection.cursor() as cursor:
     cursor.execute("SELECT version();")
     version = cursor.fetchone()[0]
@@ -34,16 +72,18 @@ with connection.cursor() as cursor:
 
 settings_conf = connection.settings_dict
 host = settings_conf.get('HOST', 'unknown')
-# Mask host for security
 masked_host = host[:6] + "..." + host[-15:] if len(host) > 21 else host
 print(f"Connected to Database: '{current_db}' on Host: '{masked_host}'")
 print(f"PostgreSQL Version: {version.split(',')[0]}")
 
-# 2. Run migrations
+# 3. Run schema migrations
 print("\n=== 2. RUNNING DJANGO MIGRATIONS ===")
-call_command('migrate', interactive=False)
+call_command('migrate', interactive=False, verbosity=1)
 
-# 3. Securely install / enable Jayraj Admin account
+# 4. Securely configure Jayraj Admin account
 print("\n=== 3. CONFIGURING JAYRAJ ADMIN ACCOUNT ===")
 call_command('setup_admin', require_postgresql=True, reuse_local_hash=True, no_migrate=True)
 
+# 5. Clear memory before exit
+del os.environ['DATABASE_URL']
+print("\nSUCCESS: Neon database is fully migrated and Jayraj admin is ready!")

@@ -1,7 +1,7 @@
 """
 Management command to safely initialize or enable the jayraj admin account in production (Neon PostgreSQL).
 Usage:
-python manage.py setup_admin [--database-url "<URL>"] [--password "<PWD>"] [--require-postgresql] [--reuse-local-hash] [--no-migrate]
+python manage.py setup_admin [--interactive] [--database-url "<URL>"] [--password "<PWD>"] [--require-postgresql] [--reuse-local-hash] [--no-migrate]
 """
 import sys
 import sqlite3
@@ -28,6 +28,11 @@ class Command(BaseCommand):
     help = 'Safely runs migrations and creates/enables the jayraj admin account in PostgreSQL without touching demo data.'
 
     def add_arguments(self, parser):
+        parser.add_argument(
+            '--interactive',
+            action='store_true',
+            help='Prompt securely for the Neon DATABASE_URL without echoing to console or shell history',
+        )
         parser.add_argument(
             '--database-url',
             type=str,
@@ -72,6 +77,15 @@ class Command(BaseCommand):
                 except (FileNotFoundError, OSError):
                     pass
 
+        # Interactive fallback if requested or if require_postgresql and running in interactive terminal
+        if not db_url and (options.get('interactive') or (options.get('require_postgresql') and sys.stdin.isatty())):
+            try:
+                self.stdout.write(self.style.NOTICE("Enter Neon DATABASE_URL (input hidden, will not show in history):"))
+                raw_input = getpass.getpass("DATABASE_URL: ")
+                db_url = clean_url(raw_input)
+            except Exception as e:
+                self.stdout.write(self.style.WARNING(f"Could not read interactive input: {e}"))
+
         # If user explicitly provided db_url or found it in env/registry, reconfigure connection
         if db_url:
             if not (db_url.startswith('postgresql://') or db_url.startswith('postgres://')):
@@ -93,7 +107,7 @@ class Command(BaseCommand):
         if (options['require_postgresql'] or db_url) and vendor != 'postgresql':
             raise CommandError(
                 f"Aborted: Target database is {vendor}, but PostgreSQL is required. "
-                "Specify --database-url \"postgresql://...\" or set DATABASE_URL before running."
+                "Run with --interactive or pass DATABASE_URL before running."
             )
 
         # Mask host for security
@@ -190,4 +204,3 @@ class Command(BaseCommand):
             f"  - Has Usable Password: {pwd_usable}\n"
             "Ready for production login!"
         ))
-
