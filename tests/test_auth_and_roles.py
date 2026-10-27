@@ -40,6 +40,19 @@ class AuthAndRolePermissionTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertIn('/login/', response.url)
 
+    def test_anonymous_root_redirects_to_login(self):
+        """Logged-out visitors accessing the root URL '/' should redirect directly to login."""
+        response = self.client.get('/')
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse('login'))
+
+    def test_authenticated_root_redirects_to_overview(self):
+        """Authenticated users accessing the root URL '/' should redirect to overview."""
+        self.client.login(username='admin_test', password='TestPassword123!')
+        response = self.client.get('/')
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse('overview'))
+
     def test_login_and_logout(self):
         """User can log in and log out."""
         login_success = self.client.login(username='admin_test', password='TestPassword123!')

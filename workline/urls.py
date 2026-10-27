@@ -3,12 +3,12 @@ Workline URL Configuration
 """
 from django.contrib import admin
 from django.urls import path, include
-from django.views.generic import RedirectView
 from django.conf import settings
 from django.conf.urls.static import static
+from apps.common.views import root_redirect_view
 
 urlpatterns = [
-    path('', RedirectView.as_view(pattern_name='overview', permanent=False)),
+    path('', root_redirect_view, name='root'),
     path('', include('apps.accounts.urls')),
     path('workspaces/', include('apps.workspaces.urls')),
     path('projects/', include('apps.projects.urls')),
