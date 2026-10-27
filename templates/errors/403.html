@@ -5,19 +5,35 @@
 {% block content %}
 <div class="min-h-[70vh] flex items-center justify-center p-6 text-center">
   <div class="max-w-md bg-white p-8 rounded-2xl border border-slate-200 shadow-lg space-y-4">
-    <div class="w-12 h-12 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto text-xl font-bold">
+    <div class="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto text-xl font-bold">
       403
     </div>
-    <h1 class="text-xl font-bold text-slate-900">Access Denied</h1>
+    <h1 class="text-xl font-bold text-slate-900">Access Restricted</h1>
     <p class="text-xs text-slate-500 leading-relaxed">
-      {{ exception|default:"You do not have permission to view or mutate this resource. Viewer accounts have read-only access, and certain actions require Manager or Admin privileges." }}
+      You do not have the required role or permissions to access this workspace section or resource.
     </p>
     <div class="pt-4 flex items-center justify-center gap-3">
       <a href="{% url 'overview' %}" class="px-4 py-2 bg-indigo-600 text-white rounded-lg text-xs font-semibold shadow-sm hover:bg-indigo-700">
-        Back to Dashboard
+        Return to Overview
       </a>
-      <a href="{% url 'my_tasks' %}" class="px-4 py-2 border border-slate-200 text-slate-700 rounded-lg text-xs font-semibold hover:bg-slate-50">
-        My Tasks
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block unauth_content %}
+<div class="min-h-[70vh] flex items-center justify-center p-6 text-center">
+  <div class="max-w-md bg-white p-8 rounded-2xl border border-slate-200 shadow-lg space-y-4">
+    <div class="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto text-xl font-bold">
+      403
+    </div>
+    <h1 class="text-xl font-bold text-slate-900">Access Restricted</h1>
+    <p class="text-xs text-slate-500 leading-relaxed">
+      You do not have the required role or permissions to access this workspace section or resource.
+    </p>
+    <div class="pt-4 flex items-center justify-center gap-3">
+      <a href="{% url 'overview' %}" class="px-4 py-2 bg-indigo-600 text-white rounded-lg text-xs font-semibold shadow-sm hover:bg-indigo-700">
+        Return to Overview
       </a>
     </div>
   </div>

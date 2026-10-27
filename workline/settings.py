@@ -105,6 +105,7 @@ WSGI_APPLICATION = 'workline.wsgi.application'
 
 # Database configuration
 # - Default: SQLite database at BASE_DIR / 'db.sqlite3'
+# - Vercel Serverless: SQLite database in writable /tmp/db.sqlite3 initialized from bundled db.sqlite3
 # - Production/PostgreSQL: Configured via DATABASE_URL environment variable
 DATABASE_URL = os.getenv('DATABASE_URL', '').strip()
 
@@ -115,6 +116,18 @@ if DATABASE_URL:
             conn_max_age=600,
             conn_health_checks=True,
         )
+    }
+elif os.getenv('VERCEL') == '1' or os.getenv('VERCEL_URL'):
+    import shutil
+    db_path = Path('/tmp') / 'db.sqlite3'
+    bundled_db = BASE_DIR / 'db.sqlite3'
+    if not db_path.exists() and bundled_db.exists():
+        shutil.copy2(bundled_db, db_path)
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': db_path,
+        }
     }
 else:
     DATABASES = {
