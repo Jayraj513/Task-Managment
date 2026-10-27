@@ -3,12 +3,18 @@ Local smoke test runner for Workline / OGFLOW.
 Run manually against a running local development server:
 python test_smoke.py
 """
+import os
 import urllib.request
 import urllib.parse
 import http.cookiejar
 import re
 
-def run_smoke_test(base_url='http://127.0.0.1:8000', username='jayraj', password='WorklineDemo2026!'):
+def run_smoke_test(base_url='http://127.0.0.1:8000', username='jayraj', password=None):
+    if not password:
+        password = os.getenv('SMOKE_TEST_PASSWORD', '')
+    if not password:
+        import getpass
+        password = getpass.getpass("Enter password for smoke test: ")
     cj = http.cookiejar.CookieJar()
     opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
 
