@@ -78,13 +78,15 @@ def project_detail_view(request, project_id):
 
     # Filter project tasks
     status = request.GET.get('status', 'all')
-    tasks_qs = project.tasks.filter(archived_at__isnull=True, parent_task__isnull=True).select_related('assignee')
+    tasks_qs = project.tasks.filter(
+        archived_at__isnull=True, parent_task__isnull=True
+    ).select_related('project', 'assignee', 'assignee__profile')
     if status != 'all':
         tasks_qs = tasks_qs.filter(status=status)
 
     milestones = project.milestones.all().order_by('due_date')
     memberships = project.memberships.select_related('user', 'user__profile').all()
-    recent_activity = project.activity_events.select_related('actor', 'task').order_by('-created_at')[:10]
+    recent_activity = project.activity_events.select_related('actor', 'actor__profile', 'task', 'task__project').order_by('-created_at')[:10]
 
     # Task metrics
     total_tasks = project.tasks.filter(archived_at__isnull=True, parent_task__isnull=True).count()

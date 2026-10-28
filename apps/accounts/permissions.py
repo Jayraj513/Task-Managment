@@ -1,5 +1,6 @@
 """
 Role-based access control and permission enforcement.
+Optimized with in-memory memoization to avoid redundant DB queries.
 """
 from functools import wraps
 from django.core.exceptions import PermissionDenied
@@ -9,14 +10,25 @@ from django.shortcuts import redirect
 from apps.accounts.models import Role
 
 
+def _get_profile(user):
+    if hasattr(user, '_cached_profile') and user._cached_profile is not None:
+        return user._cached_profile
+    if hasattr(user, 'profile'):
+        prof = user.profile
+        user._cached_profile = prof
+        return prof
+    return None
+
+
 def get_user_role(user):
     """Retrieve the primary role for the authenticated user."""
     if not user.is_authenticated:
         return None
     if user.is_superuser:
         return Role.ADMIN
-    if hasattr(user, 'profile'):
-        return user.profile.role
+    prof = _get_profile(user)
+    if prof:
+        return prof.role
     return Role.MEMBER
 
 
@@ -24,14 +36,20 @@ def can_manage_workspace(user):
     """Admin role or superuser only."""
     if not user.is_authenticated:
         return False
-    return user.is_superuser or (hasattr(user, 'profile') and user.profile.is_admin)
+    if user.is_superuser:
+        return True
+    prof = _get_profile(user)
+    return bool(prof and prof.is_admin)
 
 
 def can_manage_projects(user):
     """Admin or Manager role."""
     if not user.is_authenticated:
         return False
-    return user.is_superuser or (hasattr(user, 'profile') and user.profile.is_manager)
+    if user.is_superuser:
+        return True
+    prof = _get_profile(user)
+    return bool(prof and prof.is_manager)
 
 
 def can_mutate_tasks(user):
@@ -40,18 +58,20 @@ def can_mutate_tasks(user):
         return False
     if user.is_superuser:
         return True
-    if hasattr(user, 'profile'):
-        return user.profile.role in (Role.ADMIN, Role.MANAGER, Role.MEMBER)
-    return False
+    prof = _get_profile(user)
+    return bool(prof and prof.role in (Role.ADMIN, Role.MANAGER, Role.MEMBER))
 
 
 def can_edit_task(user, task):
     """Check if a specific user can edit a specific task."""
     if not user.is_authenticated:
         return False
-    if user.is_superuser or (hasattr(user, 'profile') and user.profile.is_manager):
+    if user.is_superuser:
         return True
-    if hasattr(user, 'profile') and user.profile.role == Role.MEMBER:
+    prof = _get_profile(user)
+    if prof and prof.is_manager:
+        return True
+    if prof and prof.role == Role.MEMBER:
         # Members can update assigned tasks or tasks where they are reporter
         return task.assignee_id == user.id or task.reporter_id == user.id or task.project.owner_id == user.id
     return False

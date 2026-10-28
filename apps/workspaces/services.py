@@ -10,13 +10,17 @@ from django.contrib.auth.models import User
 def get_active_workspace(request=None):
     """
     Resolves the active Workspace for the request in order of preference:
-    1. Session 'active_workspace_id'.
-    2. User's workspace membership.
-    3. First existing Workspace in the database.
-    4. Auto-creates a default workspace if none exists, preventing null foreign key
+    1. In-request memoized workspace (avoids duplicate DB hits per request).
+    2. Session 'active_workspace_id'.
+    3. User's workspace membership.
+    4. First existing Workspace in the database.
+    5. Auto-creates a default workspace if none exists, preventing null foreign key
        violations and 500 errors across projects, tasks, and analytics.
     Also ensures the authenticated user has an active WorkspaceMembership record.
     """
+    if request and hasattr(request, '_cached_active_workspace') and request._cached_active_workspace:
+        return request._cached_active_workspace
+
     workspace = None
 
     if request and hasattr(request, 'session'):
@@ -61,21 +65,27 @@ def get_active_workspace(request=None):
 
     # Ensure authenticated user has a membership in this active workspace
     if request and hasattr(request, 'user') and request.user.is_authenticated and workspace:
-        if not WorkspaceMembership.objects.filter(workspace=workspace, user=request.user).exists():
-            user_role = Role.ADMIN if (request.user.is_superuser or getattr(getattr(request.user, 'profile', None), 'is_admin', False)) else Role.MEMBER
-            try:
-                WorkspaceMembership.objects.get_or_create(
-                    workspace=workspace,
-                    user=request.user,
-                    defaults={'role': user_role}
-                )
-            except IntegrityError:
-                pass
+        # Check in session or via fast filter
+        membership_verified_key = f'_ws_member_verified_{workspace.id}'
+        if not (hasattr(request, 'session') and request.session.get(membership_verified_key)):
+            if not WorkspaceMembership.objects.filter(workspace=workspace, user=request.user).exists():
+                user_role = Role.ADMIN if (request.user.is_superuser or getattr(getattr(request.user, 'profile', None), 'is_admin', False)) else Role.MEMBER
+                try:
+                    WorkspaceMembership.objects.get_or_create(
+                        workspace=workspace,
+                        user=request.user,
+                        defaults={'role': user_role}
+                    )
+                except IntegrityError:
+                    pass
+            if hasattr(request, 'session'):
+                request.session[membership_verified_key] = True
 
     if request and hasattr(request, 'session') and workspace:
         request.session['active_workspace_id'] = workspace.id
 
     if request:
         request.current_workspace = workspace
+        request._cached_active_workspace = workspace
 
     return workspace

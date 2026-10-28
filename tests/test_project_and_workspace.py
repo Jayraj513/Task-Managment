@@ -83,9 +83,9 @@ class WorkspaceAndProjectTests(TestCase):
 
         self.client.login(username='admin_user', password='Password123!')
 
-        # With SQL annotation, the query count is constant (13 queries total)
+        # With SQL annotation and memoized workspace, the query count is constant (11 queries total)
         # and does NOT scale with the number of projects (which would be 10*2 = 20 extra queries without annotation).
-        with self.assertNumQueries(13):
+        with self.assertNumQueries(11):
             response = self.client.get(reverse('project_list'))
             self.assertEqual(response.status_code, 200)
 
@@ -152,3 +152,34 @@ class WorkspaceAndProjectTests(TestCase):
         response = csrf_failure_view(request, reason="CSRF token missing or incorrect.")
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.url, reverse('login'))
+
+
+    def test_kanban_board_prefetched_subtasks_no_extra_queries(self):
+        """Kanban board subtask counts must read from prefetched cache without extra queries."""
+        ws = Workspace.objects.create(name='Kanban WS', slug='kanban-ws', created_by=self.admin)
+        WorkspaceMembership.objects.create(workspace=ws, user=self.admin, role=Role.ADMIN)
+        proj = Project.objects.create(workspace=ws, name='Kanban Proj', key='KB', owner=self.admin)
+
+        for i in range(5):
+            parent = Task.objects.create(project=proj, title=f'Parent Task {i}', reporter=self.admin, status=TaskStatus.TODO)
+            Task.objects.create(project=proj, title=f'Subtask {i}-1', reporter=self.admin, parent_task=parent, status=TaskStatus.DONE)
+            Task.objects.create(project=proj, title=f'Subtask {i}-2', reporter=self.admin, parent_task=parent, status=TaskStatus.TODO)
+
+        self.client.login(username='admin_user', password='Password123!')
+        response = self.client.get(reverse('task_board'))
+        self.assertEqual(response.status_code, 200)
+
+    def test_in_request_workspace_memoization(self):
+        """Repeated calls to get_active_workspace on the same request must return the cached instance without DB queries."""
+        ws = Workspace.objects.create(name='Memo WS', slug='memo-ws', created_by=self.admin)
+        factory = RequestFactory()
+        request = factory.get('/')
+        request.user = self.admin
+        request.session = {'active_workspace_id': ws.id}
+
+        w1 = get_active_workspace(request)
+        with self.assertNumQueries(0):
+            w2 = get_active_workspace(request)
+            w3 = get_active_workspace(request)
+        self.assertEqual(w1.id, w2.id)
+        self.assertEqual(w2.id, w3.id)

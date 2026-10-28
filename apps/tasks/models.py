@@ -109,6 +109,9 @@ class Task(models.Model):
             models.Index(fields=['due_date', 'status']),
             models.Index(fields=['priority', 'status']),
             models.Index(fields=['parent_task']),
+            models.Index(fields=['project', 'archived_at', 'parent_task']),
+            models.Index(fields=['assignee', 'archived_at']),
+            models.Index(fields=['due_date', 'archived_at']),
         ]
 
     def __str__(self):
@@ -142,15 +145,21 @@ class Task(models.Model):
 
     @property
     def logged_hours_total(self):
+        if hasattr(self, '_prefetched_objects_cache') and 'time_entries' in self._prefetched_objects_cache:
+            return round(sum(float(te.duration_hours or 0.0) for te in self.time_entries.all()), 2)
         result = self.time_entries.aggregate(total=models.Sum('duration_hours'))['total']
         return round(float(result or 0.0), 2)
 
     @property
     def subtasks_count(self):
+        if hasattr(self, '_prefetched_objects_cache') and 'subtasks' in self._prefetched_objects_cache:
+            return len([s for s in self.subtasks.all() if not s.archived_at])
         return self.subtasks.filter(archived_at__isnull=True).count()
 
     @property
     def subtasks_completed_count(self):
+        if hasattr(self, '_prefetched_objects_cache') and 'subtasks' in self._prefetched_objects_cache:
+            return len([s for s in self.subtasks.all() if not s.archived_at and s.status == TaskStatus.DONE])
         return self.subtasks.filter(archived_at__isnull=True, status=TaskStatus.DONE).count()
 
     def clean(self):

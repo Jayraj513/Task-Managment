@@ -10,7 +10,7 @@ from apps.notifications.models import Notification
 def notification_list_view(request):
     notifications = Notification.objects.filter(
         recipient=request.user
-    ).select_related('actor', 'task', 'project').order_by('-created_at')
+    ).select_related('actor', 'actor__profile', 'task', 'task__project', 'project').order_by('-created_at')[:100]
 
     unread_notifications = [n for n in notifications if not n.read_at]
     read_notifications = [n for n in notifications if n.read_at]

@@ -1,6 +1,7 @@
 """
 Global template context processor for Workline.
 Supplies workspace context, user roles, active projects, and notification counts.
+Optimized to eliminate duplicate database roundtrips.
 """
 from apps.workspaces.services import get_active_workspace
 from apps.projects.models import Project, ProjectStatus
@@ -14,22 +15,24 @@ def workline_context(request):
             'current_workspace': None,
             'active_projects': [],
             'unread_notifications_count': 0,
+            'recent_notifications': [],
+            'user_profile': None,
             'can_manage_workspace': False,
             'can_manage_projects': False,
             'can_mutate_tasks': False,
         }
 
-    # Retrieve or resolve active workspace safely
+    # Retrieve or resolve active workspace safely (memoized on request)
     workspace = get_active_workspace(request)
     request.current_workspace = workspace
 
-    # Active projects for the sidebar navigation
+    # Active projects for the sidebar navigation (lightweight column projection)
     active_projects = []
     if workspace:
         active_projects = Project.objects.filter(
             workspace=workspace,
             status__in=[ProjectStatus.PLANNING, ProjectStatus.ACTIVE, ProjectStatus.ON_HOLD]
-        ).order_by('name')[:15]
+        ).only('id', 'name', 'color', 'key', 'workspace_id').order_by('name')[:15]
 
     # Unread notifications count
     unread_count = Notification.objects.filter(
@@ -39,9 +42,13 @@ def workline_context(request):
 
     recent_notifications = Notification.objects.filter(
         recipient=request.user
-    ).order_by('-created_at')[:5]
+    ).only('id', 'title', 'message', 'link_url', 'read_at', 'created_at').order_by('-created_at')[:5]
 
-    user_profile = getattr(request.user, 'profile', None)
+    # In-memory memoize profile on request.user
+    user_profile = getattr(request.user, '_cached_profile', None)
+    if user_profile is None and hasattr(request.user, 'profile'):
+        user_profile = request.user.profile
+        request.user._cached_profile = user_profile
 
     return {
         'current_workspace': workspace,

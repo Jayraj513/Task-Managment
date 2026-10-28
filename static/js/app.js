@@ -146,6 +146,40 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // Instant Navigation Progress Bar
+  const progressBar = document.createElement('div');
+  progressBar.id = 'page-progress-bar';
+  progressBar.style.cssText = 'position:fixed;top:0;left:0;height:3px;width:0%;background:#6366f1;z-index:99999;transition:width 0.2s ease, opacity 0.3s ease;pointer-events:none;';
+  document.body.appendChild(progressBar);
+
+  document.addEventListener('click', (e) => {
+    const link = e.target.closest('a');
+    if (link && link.href && !link.target && !link.hasAttribute('download')) {
+      try {
+        const url = new URL(link.href, window.location.origin);
+        if (url.origin === window.location.origin && !url.pathname.startsWith('/static/') && !url.hash && url.href !== window.location.href) {
+          progressBar.style.opacity = '1';
+          progressBar.style.width = '70%';
+        }
+      } catch (err) {}
+    }
+  });
+
+  document.addEventListener('submit', (e) => {
+    const form = e.target;
+    if (form && !form.target && form.method && form.method.toUpperCase() === 'POST') {
+      const btn = form.querySelector('button[type="submit"]');
+      if (btn && !btn.disabled) {
+        btn.dataset.originalText = btn.innerHTML;
+        btn.disabled = true;
+        btn.style.opacity = '0.75';
+        btn.innerHTML = `<span class="inline-flex items-center gap-1.5"><svg class="animate-spin h-3.5 w-3.5 inline" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg>Saving...</span>`;
+      }
+      progressBar.style.opacity = '1';
+      progressBar.style.width = '80%';
+    }
+  });
+
   // Global Keyboard Shortcuts
   document.addEventListener('keydown', (e) => {
     // If typing in input or textarea, don't trigger shortcuts

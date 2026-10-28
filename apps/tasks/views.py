@@ -28,9 +28,9 @@ from apps.tasks.services import validate_dependency, detect_dependency_cycle
 
 def _get_workspace_and_filters(request):
     workspace = getattr(request, 'current_workspace', None) or get_active_workspace(request)
-    projects = Project.objects.filter(workspace=workspace, archived_at__isnull=True).order_by('name')
-    users = User.objects.filter(workspace_memberships__workspace=workspace).distinct().order_by('first_name', 'username')
-    tags = Tag.objects.filter(workspace=workspace).order_by('name')
+    projects = Project.objects.filter(workspace=workspace, archived_at__isnull=True).only('id', 'name', 'color', 'key').order_by('name')
+    users = User.objects.filter(workspace_memberships__workspace=workspace).select_related('profile').distinct().order_by('first_name', 'username')
+    tags = Tag.objects.filter(workspace=workspace).only('id', 'name', 'color').order_by('name')
 
     project_id = request.GET.get('project', 'all')
     assignee_id = request.GET.get('assignee', 'all')
@@ -86,7 +86,9 @@ def task_board_view(request):
         project__workspace=workspace,
         archived_at__isnull=True,
         parent_task__isnull=True
-    ).select_related('project', 'assignee', 'reporter').prefetch_related('tags', 'subtasks')
+    ).select_related(
+        'project', 'assignee', 'assignee__profile', 'reporter', 'reporter__profile'
+    ).prefetch_related('tags', 'subtasks')
 
     filtered_qs = _filter_tasks(base_qs, ctx_data)
 
@@ -147,7 +149,9 @@ def task_list_view(request):
         project__workspace=workspace,
         archived_at__isnull=True,
         parent_task__isnull=True
-    ).select_related('project', 'assignee', 'reporter').prefetch_related('tags').order_by(sort_field)
+    ).select_related(
+        'project', 'assignee', 'assignee__profile', 'reporter', 'reporter__profile'
+    ).prefetch_related('tags').order_by(sort_field)
 
     filtered_qs = _filter_tasks(base_qs, ctx_data)
 
@@ -175,7 +179,7 @@ def my_tasks_view(request):
         assignee=request.user,
         archived_at__isnull=True,
         parent_task__isnull=True
-    ).select_related('project').prefetch_related('tags').order_by('due_date', '-priority')
+    ).select_related('project', 'assignee__profile').prefetch_related('tags').order_by('due_date', '-priority')
 
     # Apply quick filter if any
     status_filter = request.GET.get('status', 'all')
@@ -243,7 +247,7 @@ def task_calendar_view(request):
         archived_at__isnull=True,
         due_date__gte=grid_start_date,
         due_date__lte=grid_end_date
-    ).select_related('project', 'assignee')
+    ).select_related('project', 'assignee', 'assignee__profile')
 
     tasks_qs = _filter_tasks(tasks_qs, ctx_data)
 
@@ -296,7 +300,7 @@ def task_gantt_view(request):
         project__workspace=workspace,
         archived_at__isnull=True,
         parent_task__isnull=True
-    ).select_related('project', 'assignee').prefetch_related('successor_dependencies', 'predecessor_dependencies')
+    ).select_related('project', 'assignee', 'assignee__profile').prefetch_related('successor_dependencies', 'predecessor_dependencies')
 
     tasks_qs = _filter_tasks(tasks_qs, ctx_data).order_by('start_date', 'due_date', 'id')
 
@@ -371,14 +375,14 @@ def task_detail_view(request, task_id):
     dependencies, time entries, and activity history.
     """
     task = get_object_or_404(
-        Task.objects.select_related('project', 'assignee', 'reporter', 'parent_task'),
+        Task.objects.select_related('project', 'assignee', 'assignee__profile', 'reporter', 'reporter__profile', 'parent_task'),
         id=task_id
     )
 
-    subtasks = task.subtasks.filter(archived_at__isnull=True).select_related('assignee')
+    subtasks = task.subtasks.filter(archived_at__isnull=True).select_related('assignee', 'assignee__profile')
     comments = task.comments.select_related('author', 'author__profile').order_by('created_at')
-    attachments = task.attachments.select_related('uploaded_by').order_by('-created_at')
-    time_entries = task.time_entries.select_related('user').order_by('-entry_date', '-created_at')
+    attachments = task.attachments.select_related('uploaded_by', 'uploaded_by__profile').order_by('-created_at')
+    time_entries = task.time_entries.select_related('user', 'user__profile').order_by('-entry_date', '-created_at')
     total_logged_hours = task.logged_hours_total
 
     # Dependencies: Predecessors (tasks this task depends on) & Successors (tasks blocked by this task)
@@ -390,14 +394,14 @@ def task_detail_view(request, task_id):
     potential_predecessors = Task.objects.filter(
         project__workspace=task.project.workspace,
         archived_at__isnull=True
-    ).exclude(id=task.id).exclude(id__in=existing_pred_ids).order_by('title')
+    ).exclude(id=task.id).exclude(id__in=existing_pred_ids).select_related('project').only('id', 'title', 'project__key').order_by('title')[:30]
 
     # Activity events
-    activity_events = task.activity_events.select_related('actor').order_by('-created_at')[:15]
+    activity_events = task.activity_events.select_related('actor', 'actor__profile').order_by('-created_at')[:15]
 
     workspace_users = User.objects.filter(
         workspace_memberships__workspace=task.project.workspace
-    ).distinct().order_by('first_name', 'username')
+    ).select_related('profile').distinct().order_by('first_name', 'username')
 
     return render(request, 'tasks/detail.html', {
         'task': task,

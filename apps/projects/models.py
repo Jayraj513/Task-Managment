@@ -49,6 +49,7 @@ class Project(models.Model):
         indexes = [
             models.Index(fields=['workspace', 'status']),
             models.Index(fields=['owner', 'status']),
+            models.Index(fields=['workspace', 'archived_at']),
         ]
 
     def __str__(self):
