@@ -7,6 +7,7 @@ from django.contrib import messages
 from apps.accounts.models import Role, UserProfile
 from apps.accounts.permissions import require_admin
 from apps.workspaces.models import Workspace, WorkspaceMembership
+from apps.workspaces.services import get_active_workspace
 
 
 def csrf_failure_view(request, reason=""):
@@ -14,7 +15,10 @@ def csrf_failure_view(request, reason=""):
     User-friendly handler for CSRF token expiration or origin mismatches.
     Redirects back to login with a clean warning message instead of a raw 403 page.
     """
-    messages.warning(request, "Your security session expired or refreshed. Please sign in again.")
+    try:
+        messages.warning(request, "Your security session expired or refreshed. Please sign in again.")
+    except Exception:
+        pass
     return redirect('login')
 
 
@@ -87,7 +91,7 @@ def profile_view(request):
 
 @require_admin
 def users_admin_view(request):
-    workspace = Workspace.objects.first()
+    workspace = getattr(request, 'current_workspace', None) or get_active_workspace(request)
     memberships = WorkspaceMembership.objects.filter(
         workspace=workspace
     ).select_related('user', 'user__profile').order_by('user__first_name')

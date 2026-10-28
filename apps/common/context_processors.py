@@ -2,7 +2,7 @@
 Global template context processor for Workline.
 Supplies workspace context, user roles, active projects, and notification counts.
 """
-from apps.workspaces.models import Workspace
+from apps.workspaces.services import get_active_workspace
 from apps.projects.models import Project, ProjectStatus
 from apps.notifications.models import Notification
 from apps.accounts.permissions import can_manage_workspace, can_manage_projects, can_mutate_tasks
@@ -19,22 +19,9 @@ def workline_context(request):
             'can_mutate_tasks': False,
         }
 
-    # Retrieve or select default workspace
-    workspace = None
-    workspace_id = request.session.get('active_workspace_id')
-    if workspace_id:
-        workspace = Workspace.objects.filter(id=workspace_id).first()
-
-    if not workspace:
-        # Fallback to first workspace user belongs to or first available
-        membership = request.user.workspace_memberships.select_related('workspace').first()
-        if membership:
-            workspace = membership.workspace
-        else:
-            workspace = Workspace.objects.first()
-
-        if workspace:
-            request.session['active_workspace_id'] = workspace.id
+    # Retrieve or resolve active workspace safely
+    workspace = get_active_workspace(request)
+    request.current_workspace = workspace
 
     # Active projects for the sidebar navigation
     active_projects = []

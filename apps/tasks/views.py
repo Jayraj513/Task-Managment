@@ -19,6 +19,7 @@ from apps.tasks.models import (
 )
 from apps.projects.models import Project, Milestone
 from apps.workspaces.models import Workspace
+from apps.workspaces.services import get_active_workspace
 from apps.accounts.permissions import require_mutation_allowed, can_mutate_tasks
 from apps.notifications.services import record_activity, notify_user
 from apps.notifications.models import ActivityEventType
@@ -26,7 +27,7 @@ from apps.tasks.services import validate_dependency, detect_dependency_cycle
 
 
 def _get_workspace_and_filters(request):
-    workspace = getattr(request, 'current_workspace', None) or Workspace.objects.first()
+    workspace = getattr(request, 'current_workspace', None) or get_active_workspace(request)
     projects = Project.objects.filter(workspace=workspace, archived_at__isnull=True).order_by('name')
     users = User.objects.filter(workspace_memberships__workspace=workspace).distinct().order_by('first_name', 'username')
     tags = Tag.objects.filter(workspace=workspace).order_by('name')
@@ -417,7 +418,7 @@ def task_detail_view(request, task_id):
 
 @require_mutation_allowed
 def task_create_view(request):
-    workspace = Workspace.objects.first()
+    workspace = getattr(request, 'current_workspace', None) or get_active_workspace(request)
     projects = Project.objects.filter(workspace=workspace, archived_at__isnull=True).order_by('name')
     users = User.objects.filter(workspace_memberships__workspace=workspace).distinct().order_by('first_name')
     tags = Tag.objects.filter(workspace=workspace).order_by('name')
@@ -891,7 +892,7 @@ def task_quick_create_api(request):
     """
     Quick-create task modal handler from the top navigation bar.
     """
-    workspace = Workspace.objects.first()
+    workspace = getattr(request, 'current_workspace', None) or get_active_workspace(request)
     title = request.POST.get('title', '').strip()
     project_id = request.POST.get('project')
     priority = request.POST.get('priority', TaskPriority.MEDIUM)

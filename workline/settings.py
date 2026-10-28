@@ -50,6 +50,8 @@ if RENDER_EXTERNAL_HOSTNAME and RENDER_EXTERNAL_HOSTNAME not in ALLOWED_HOSTS:
 
 # Honor X-Forwarded-Proto header for request.is_secure() behind reverse proxies
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+USE_X_FORWARDED_HOST = True
+USE_X_FORWARDED_PORT = True
 
 # Application definition
 INSTALLED_APPS = [
@@ -145,8 +147,8 @@ if DATABASE_URL:
     DATABASES = {
         'default': dj_database_url.parse(
             DATABASE_URL,
-            conn_max_age=600,
-            conn_health_checks=True,
+            conn_max_age=int(os.getenv('CONN_MAX_AGE', '0' if IS_VERCEL else '600')),
+            conn_health_checks=False if IS_VERCEL else True,
         )
     }
 elif IS_VERCEL:

@@ -78,26 +78,39 @@ def get_filtered_tasks_queryset(workspace, params=None):
 
 def calculate_dashboard_kpis(tasks_qs):
     """
-    Computes summary KPI dictionary from the filtered tasks queryset.
+    Computes summary KPI dictionary from the filtered tasks queryset using a single SQL query.
     """
     today = timezone.localdate()
     start_of_week = today - timedelta(days=today.weekday())
 
-    total_count = tasks_qs.count()
-    completed_count = tasks_qs.filter(status=TaskStatus.DONE).count()
-    cancelled_count = tasks_qs.filter(status=TaskStatus.CANCELLED).count()
+    metrics = tasks_qs.aggregate(
+        total_count=Count('id'),
+        completed_count=Count('id', filter=Q(status=TaskStatus.DONE)),
+        cancelled_count=Count('id', filter=Q(status=TaskStatus.CANCELLED)),
+        total_open=Count('id', filter=~Q(status__in=[TaskStatus.DONE, TaskStatus.CANCELLED])),
+        completed_this_week=Count(
+            'id',
+            filter=Q(status=TaskStatus.DONE, updated_at__date__gte=start_of_week)
+        ),
+        overdue_count=Count(
+            'id',
+            filter=Q(due_date__lt=today) & ~Q(status__in=[TaskStatus.DONE, TaskStatus.CANCELLED])
+        ),
+        blocked_count=Count('id', filter=Q(status=TaskStatus.BLOCKED)),
+        unassigned_count=Count(
+            'id',
+            filter=Q(assignee__isnull=True) & ~Q(status__in=[TaskStatus.DONE, TaskStatus.CANCELLED])
+        )
+    )
 
-    open_tasks = tasks_qs.exclude(status__in=[TaskStatus.DONE, TaskStatus.CANCELLED])
-    total_open = open_tasks.count()
-
-    completed_this_week = tasks_qs.filter(
-        status=TaskStatus.DONE,
-        updated_at__date__gte=start_of_week
-    ).count()
-
-    overdue_count = open_tasks.filter(due_date__lt=today).count()
-    blocked_count = tasks_qs.filter(status=TaskStatus.BLOCKED).count()
-    unassigned_count = open_tasks.filter(assignee__isnull=True).count()
+    total_count = metrics['total_count'] or 0
+    completed_count = metrics['completed_count'] or 0
+    cancelled_count = metrics['cancelled_count'] or 0
+    total_open = metrics['total_open'] or 0
+    completed_this_week = metrics['completed_this_week'] or 0
+    overdue_count = metrics['overdue_count'] or 0
+    blocked_count = metrics['blocked_count'] or 0
+    unassigned_count = metrics['unassigned_count'] or 0
 
     denominator = total_count - cancelled_count
     if denominator > 0:
@@ -185,8 +198,23 @@ def get_priority_distribution(tasks_qs):
 def get_assignee_distribution(workspace, tasks_qs):
     """
     Task distribution by assignee for Chart.js and workload cards.
+    Uses grouped SQL aggregation queries instead of N+1 per-user queries.
     """
-    users = User.objects.filter(workspace_memberships__workspace=workspace).distinct()
+    users = list(User.objects.filter(workspace_memberships__workspace=workspace).distinct())
+
+    open_counts = dict(
+        tasks_qs.exclude(status__in=[TaskStatus.DONE, TaskStatus.CANCELLED])
+        .values('assignee')
+        .annotate(total=Count('id'))
+        .values_list('assignee', 'total')
+    )
+    done_counts = dict(
+        tasks_qs.filter(status=TaskStatus.DONE)
+        .values('assignee')
+        .annotate(total=Count('id'))
+        .values_list('assignee', 'total')
+    )
+
     labels = []
     data_open = []
     data_done = []
@@ -194,17 +222,11 @@ def get_assignee_distribution(workspace, tasks_qs):
     for user in users:
         full_name = user.get_full_name() or user.username
         labels.append(full_name)
-        open_count = tasks_qs.filter(
-            assignee=user
-        ).exclude(status__in=[TaskStatus.DONE, TaskStatus.CANCELLED]).count()
-        done_count = tasks_qs.filter(assignee=user, status=TaskStatus.DONE).count()
-        data_open.append(open_count)
-        data_done.append(done_count)
+        data_open.append(open_counts.get(user.id, 0))
+        data_done.append(done_counts.get(user.id, 0))
 
     # Unassigned bucket
-    unassigned_open = tasks_qs.filter(
-        assignee__isnull=True
-    ).exclude(status__in=[TaskStatus.DONE, TaskStatus.CANCELLED]).count()
+    unassigned_open = open_counts.get(None, 0)
     if unassigned_open > 0:
         labels.append('Unassigned')
         data_open.append(unassigned_open)
@@ -220,19 +242,28 @@ def get_assignee_distribution(workspace, tasks_qs):
 def get_completion_trend(tasks_qs, days=14):
     """
     Daily completion trend for the last N days.
+    Uses grouped date queries instead of 2 * N individual loop queries.
     """
     today = timezone.localdate()
     dates = [(today - timedelta(days=i)) for i in range(days - 1, -1, -1)]
+    min_date = dates[0]
+
+    created_by_date = dict(
+        tasks_qs.filter(created_at__date__gte=min_date)
+        .values('created_at__date')
+        .annotate(total=Count('id'))
+        .values_list('created_at__date', 'total')
+    )
+    done_by_date = dict(
+        tasks_qs.filter(status=TaskStatus.DONE, updated_at__date__gte=min_date)
+        .values('updated_at__date')
+        .annotate(total=Count('id'))
+        .values_list('updated_at__date', 'total')
+    )
 
     labels = [d.strftime('%b %d') for d in dates]
-    created_counts = []
-    completed_counts = []
-
-    for d in dates:
-        c_created = tasks_qs.filter(created_at__date=d).count()
-        c_done = tasks_qs.filter(status=TaskStatus.DONE, updated_at__date=d).count()
-        created_counts.append(c_created)
-        completed_counts.append(c_done)
+    created_counts = [created_by_date.get(d, 0) for d in dates]
+    completed_counts = [done_by_date.get(d, 0) for d in dates]
 
     return {
         'labels': labels,
@@ -245,32 +276,42 @@ def get_team_workload_matrix(workspace):
     """
     Calculates weekly capacity vs assigned estimated hours for each team member.
     Identifies overload when estimated hours > weekly capacity.
+    Uses batch aggregation to eliminate N+1 queries.
     """
-    users = User.objects.filter(
+    users = list(User.objects.filter(
         workspace_memberships__workspace=workspace
-    ).select_related('profile').distinct().order_by('first_name', 'username')
+    ).select_related('profile').distinct().order_by('first_name', 'username'))
+
+    task_stats = {
+        row['assignee']: row
+        for row in Task.objects.filter(
+            project__workspace=workspace,
+            archived_at__isnull=True
+        ).exclude(
+            status__in=[TaskStatus.DONE, TaskStatus.CANCELLED]
+        ).values('assignee').annotate(
+            task_count=Count('id'),
+            total_est=Sum('estimate_hours')
+        )
+    }
+
+    time_stats = dict(
+        TimeEntry.objects.filter(
+            task__project__workspace=workspace
+        ).values('user').annotate(
+            total_logged=Sum('duration_hours')
+        ).values_list('user', 'total_logged')
+    )
 
     matrix = []
     for user in users:
         profile = getattr(user, 'profile', None)
         capacity = profile.weekly_capacity_hours if profile else 40
 
-        active_tasks = Task.objects.filter(
-            project__workspace=workspace,
-            assignee=user,
-            archived_at__isnull=True
-        ).exclude(status__in=[TaskStatus.DONE, TaskStatus.CANCELLED])
-
-        task_count = active_tasks.count()
-        agg = active_tasks.aggregate(total_est=Sum('estimate_hours'))
-        total_estimate = float(agg['total_est'] or 0.0)
-
-        # Logged hours
-        logged_agg = TimeEntry.objects.filter(
-            task__project__workspace=workspace,
-            user=user
-        ).aggregate(total_logged=Sum('duration_hours'))
-        total_logged = float(logged_agg['total_logged'] or 0.0)
+        stats = task_stats.get(user.id, {})
+        task_count = stats.get('task_count', 0)
+        total_estimate = float(stats.get('total_est') or 0.0)
+        total_logged = float(time_stats.get(user.id) or 0.0)
 
         is_overloaded = total_estimate > capacity
         utilization_rate = int(round((total_estimate / capacity) * 100)) if capacity > 0 else 0

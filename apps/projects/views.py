@@ -7,6 +7,7 @@ from django.core.exceptions import ValidationError
 
 from apps.projects.models import Project, ProjectStatus, Milestone, MilestoneStatus, ProjectMembership
 from apps.workspaces.models import Workspace
+from apps.workspaces.services import get_active_workspace
 from apps.tasks.models import Task, TaskStatus
 from apps.accounts.permissions import require_manager_or_above, can_manage_projects
 from apps.notifications.services import record_activity
@@ -16,7 +17,7 @@ from django.contrib.auth.models import User
 
 @login_required
 def project_list_view(request):
-    workspace = getattr(request, 'current_workspace', None) or Workspace.objects.first()
+    workspace = getattr(request, 'current_workspace', None) or get_active_workspace(request)
 
     show_archived = request.GET.get('archived') == '1'
     q = request.GET.get('q', '').strip()
@@ -35,11 +36,22 @@ def project_list_view(request):
     if q:
         projects_qs = projects_qs.filter(Q(name__icontains=q) | Q(key__icontains=q) | Q(description__icontains=q))
 
-    # Add task counts per project
+    # Add task counts per project using SQL aggregation to avoid N+1 queries
+    projects_qs = projects_qs.annotate(
+        annotated_total_tasks=Count(
+            'tasks',
+            filter=Q(tasks__archived_at__isnull=True, tasks__parent_task__isnull=True)
+        ),
+        annotated_done_tasks=Count(
+            'tasks',
+            filter=Q(tasks__archived_at__isnull=True, tasks__parent_task__isnull=True, tasks__status=TaskStatus.DONE)
+        )
+    )
+
     projects_list = []
     for proj in projects_qs:
-        total_tasks = proj.tasks.filter(archived_at__isnull=True, parent_task__isnull=True).count()
-        done_tasks = proj.tasks.filter(archived_at__isnull=True, parent_task__isnull=True, status=TaskStatus.DONE).count()
+        total_tasks = proj.annotated_total_tasks
+        done_tasks = proj.annotated_done_tasks
         open_tasks = total_tasks - done_tasks
         progress = int(round((done_tasks / total_tasks) * 100)) if total_tasks > 0 else (100 if proj.status == ProjectStatus.COMPLETED else 0)
 
@@ -95,7 +107,7 @@ def project_detail_view(request, project_id):
 
 @require_manager_or_above
 def project_create_view(request):
-    workspace = Workspace.objects.first()
+    workspace = getattr(request, 'current_workspace', None) or get_active_workspace(request)
     users = User.objects.filter(workspace_memberships__workspace=workspace).distinct()
 
     if request.method == 'POST':
@@ -127,7 +139,7 @@ def project_create_view(request):
                 'action_title': 'Create Project',
             })
 
-        owner = User.objects.filter(id=owner_id).first() if owner_id else request.user
+        owner = (User.objects.filter(id=owner_id).first() if owner_id else None) or request.user
         project = Project.objects.create(
             workspace=workspace,
             name=name,
@@ -141,10 +153,10 @@ def project_create_view(request):
         )
 
         # Add creator / owner to project membership
-        ProjectMembership.objects.create(
+        ProjectMembership.objects.get_or_create(
             project=project,
             user=owner,
-            project_role='LEAD'
+            defaults={'project_role': 'LEAD'}
         )
 
         record_activity(

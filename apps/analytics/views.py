@@ -8,6 +8,7 @@ from django.contrib.auth.models import User
 from django.db.models import Sum, Count, Q
 
 from apps.workspaces.models import Workspace
+from apps.workspaces.services import get_active_workspace
 from apps.projects.models import Project
 from apps.tasks.models import Task, TaskStatus, TaskPriority, TimeEntry
 from apps.analytics.services import (
@@ -27,7 +28,7 @@ def overview_dashboard_view(request):
     Overview Dashboard: Real-time query-backed KPIs, Chart.js analytics,
     recently updated tasks, and interactive filter controls.
     """
-    workspace = getattr(request, 'current_workspace', None) or Workspace.objects.first()
+    workspace = getattr(request, 'current_workspace', None) or get_active_workspace(request)
 
     # Get filter query params
     params = request.GET.dict()
@@ -75,7 +76,7 @@ def team_workload_view(request):
     Team Workload: Weekly capacity vs estimated task hours matrix.
     Identifies overload using documented configurable capacity per member.
     """
-    workspace = getattr(request, 'current_workspace', None) or Workspace.objects.first()
+    workspace = getattr(request, 'current_workspace', None) or get_active_workspace(request)
     workload_matrix = get_team_workload_matrix(workspace)
 
     # Summary totals
@@ -106,7 +107,7 @@ def reports_view(request):
     - Estimate vs actual logged time per project
     - Unassigned tasks
     """
-    workspace = getattr(request, 'current_workspace', None) or Workspace.objects.first()
+    workspace = getattr(request, 'current_workspace', None) or get_active_workspace(request)
     today = timezone.localdate()
 
     # 1. Overdue tasks
@@ -116,37 +117,67 @@ def reports_view(request):
         due_date__lt=today
     ).exclude(status__in=[TaskStatus.DONE, TaskStatus.CANCELLED]).select_related('project', 'assignee')
 
-    # 2. Member performance breakdown
-    users = User.objects.filter(workspace_memberships__workspace=workspace).distinct()
+    # 2. Member performance breakdown using batch aggregation
+    users = list(User.objects.filter(workspace_memberships__workspace=workspace).distinct())
+    member_task_stats = {
+        row['assignee']: row
+        for row in Task.objects.filter(
+            project__workspace=workspace,
+            archived_at__isnull=True
+        ).values('assignee').annotate(
+            completed=Count('id', filter=Q(status=TaskStatus.DONE)),
+            in_progress=Count('id', filter=Q(status=TaskStatus.IN_PROGRESS)),
+            overdue=Count('id', filter=Q(due_date__lt=today) & ~Q(status__in=[TaskStatus.DONE, TaskStatus.CANCELLED])),
+        )
+    }
+    member_logged_stats = dict(
+        TimeEntry.objects.filter(
+            task__project__workspace=workspace
+        ).values('user').annotate(
+            total=Sum('duration_hours')
+        ).values_list('user', 'total')
+    )
+
     member_reports = []
     for u in users:
-        u_tasks = Task.objects.filter(project__workspace=workspace, assignee=u, archived_at__isnull=True)
-        completed = u_tasks.filter(status=TaskStatus.DONE).count()
-        in_progress = u_tasks.filter(status=TaskStatus.IN_PROGRESS).count()
-        overdue = u_tasks.filter(due_date__lt=today).exclude(status__in=[TaskStatus.DONE, TaskStatus.CANCELLED]).count()
-        logged_hours = TimeEntry.objects.filter(task__project__workspace=workspace, user=u).aggregate(total=Sum('duration_hours'))['total'] or 0.0
+        stats = member_task_stats.get(u.id, {})
+        logged_hours = member_logged_stats.get(u.id) or 0.0
 
         member_reports.append({
             'user': u,
-            'completed': completed,
-            'in_progress': in_progress,
-            'overdue': overdue,
+            'completed': stats.get('completed', 0),
+            'in_progress': stats.get('in_progress', 0),
+            'overdue': stats.get('overdue', 0),
             'logged_hours': round(float(logged_hours), 1),
         })
 
-    # 3. Project Estimate vs Actual Logged Time
-    projects = Project.objects.filter(workspace=workspace, archived_at__isnull=True)
+    # 3. Project Estimate vs Actual Logged Time using batch aggregation
+    projects = list(Project.objects.filter(workspace=workspace, archived_at__isnull=True))
+    project_est_stats = dict(
+        Task.objects.filter(
+            project__workspace=workspace,
+            archived_at__isnull=True
+        ).values('project').annotate(
+            total=Sum('estimate_hours')
+        ).values_list('project', 'total')
+    )
+    project_actual_stats = dict(
+        TimeEntry.objects.filter(
+            task__project__workspace=workspace
+        ).values('task__project').annotate(
+            total=Sum('duration_hours')
+        ).values_list('task__project', 'total')
+    )
+
     project_time_reports = []
     for p in projects:
-        p_tasks = p.tasks.filter(archived_at__isnull=True)
-        est = p_tasks.aggregate(total=Sum('estimate_hours'))['total'] or 0.0
-        actual = TimeEntry.objects.filter(task__project=p).aggregate(total=Sum('duration_hours'))['total'] or 0.0
-
-        variance = float(est) - float(actual)
+        est = float(project_est_stats.get(p.id) or 0.0)
+        actual = float(project_actual_stats.get(p.id) or 0.0)
+        variance = est - actual
         project_time_reports.append({
             'project': p,
-            'estimated_hours': round(float(est), 1),
-            'actual_hours': round(float(actual), 1),
+            'estimated_hours': round(est, 1),
+            'actual_hours': round(actual, 1),
             'variance_hours': round(variance, 1),
         })
 
@@ -172,7 +203,7 @@ def export_tasks_csv_view(request):
     Exports filtered tasks as a CSV file.
     Respects all active filter parameters from the user's current view.
     """
-    workspace = getattr(request, 'current_workspace', None) or Workspace.objects.first()
+    workspace = getattr(request, 'current_workspace', None) or get_active_workspace(request)
     params = request.GET.dict()
     tasks_qs = get_filtered_tasks_queryset(workspace, params)
 
