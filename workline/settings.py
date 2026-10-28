@@ -149,6 +149,7 @@ if DATABASE_URL:
             DATABASE_URL,
             conn_max_age=int(os.getenv('CONN_MAX_AGE', '0' if IS_VERCEL else '600')),
             conn_health_checks=False if IS_VERCEL else True,
+            disable_server_side_cursors=True,
         )
     }
 elif IS_VERCEL:
